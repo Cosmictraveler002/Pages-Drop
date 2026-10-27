@@ -1,0 +1,39 @@
+{
+  "name": "cf-pages-random-workflow",
+  "version": "1.0.0",
+  "description": "Cloudflare Pages CLI Workflow to generate live static pages with random links and daily free limit auto-updating dashboard",
+  "main": "server/server.js",
+  "bin": {
+    "cf-random-pages": "./cli/cli.js"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "deploy:random": "node cli/cli.js --deploy",
+    "deploy:preview": "node cli/cli.js --dry-run",
+    "status": "node cli/cli.js --status",
+    "cf:login": "npx wrangler login",
+    "cf:whoami": "npx wrangler whoami",
+    "cf:projects": "npx wrangler pages project list"
+  },
+  "keywords": [
+    "cloudflare",
+    "pages",
+    "wrangler",
+    "static-pages",
+    "random-links",
+    "free-tier",
+    "dashboard"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.153.0"
+  }
+}

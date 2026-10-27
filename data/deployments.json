@@ -1,0 +1,15 @@
+[
+  {
+    "id": "dep_1793117137745_siolj",
+    "slug": "d0e8532",
+    "title": "Classified Project Alpha",
+    "template": "secret",
+    "mode": "branch",
+    "url": "https://d0e8532.random-pages-vault.pages.dev",
+    "canonicalUrl": "https://d0e8532.random-pages-vault.pages.dev",
+    "cfDeploymentId": "sim_1793117137743",
+    "isSimulation": true,
+    "created_at": "2026-10-27T16:05:37.745Z",
+    "status": "active"
+  }
+]
