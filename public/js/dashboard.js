@@ -14,6 +14,7 @@ const appState = {
   deviceId: null,
   autoRenameIndex: true,
   queuedFiles: [],                // Array of { name, path, content, isBase64, size, type }
+  excludedFiles: [],              // Excluded sensitive/traversal files
   abortController: null,
   activeDeleteConfirmSlug: null,
   sortMode: 'newest'
@@ -89,6 +90,7 @@ const el = {
   queuedList: document.getElementById('queuedList'),
   payloadSummary: document.getElementById('payloadSummary'),
   entryFileAlert: document.getElementById('entryFileAlert'),
+  excludedFilesAlert: document.getElementById('excludedFilesAlert'),
   autoRenameCheckbox: document.getElementById('autoRenameCheckbox'),
 
   slugInput: document.getElementById('slugInput'),
@@ -511,6 +513,26 @@ async function processFileList(fileList) {
   await loadFilesIntoQueue(fileEntries);
 }
 
+function isClientSensitivePath(filePath) {
+  const clean = (filePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  const segments = clean.split('/');
+  const fileName = segments[segments.length - 1];
+  const sensitiveDirs = ['.git', '.svn', '.hg', '.aws'];
+
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i];
+    if (seg === '.well-known') continue;
+    if (sensitiveDirs.includes(seg) || seg.startsWith('.env')) return true;
+  }
+
+  const lower = fileName.toLowerCase();
+  if (lower.startsWith('.env') || lower === '.git' || sensitiveDirs.includes(lower)) return true;
+  if (lower.endsWith('.pem') || lower.endsWith('.key') || lower.startsWith('id_rsa') || lower.startsWith('id_ed25519')) return true;
+  if (lower === '.npmrc' || lower === '.ds_store' || lower === 'thumbs.db') return true;
+
+  return false;
+}
+
 async function loadFilesIntoQueue(fileEntries) {
   const binaryExtensions = [
     'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf',
@@ -518,8 +540,23 @@ async function loadFilesIntoQueue(fileEntries) {
   ];
 
   const processed = [];
+  const excluded = [];
 
   for (const item of fileEntries) {
+    const normPath = (item.path || item.file.name || '').replace(/\\/g, '/');
+
+    // Reject null bytes, drive letters, traversals
+    if (normPath.includes('\0') || /^[a-zA-Z]:/.test(normPath) || normPath.startsWith('/') || normPath.includes('../')) {
+      excluded.push(normPath);
+      continue;
+    }
+
+    // Exclude sensitive files at ANY path depth
+    if (isClientSensitivePath(normPath)) {
+      excluded.push(normPath);
+      continue;
+    }
+
     const ext = item.file.name.split('.').pop().toLowerCase();
     const isBinary = binaryExtensions.includes(ext) || item.file.type.startsWith('image/');
 
@@ -536,7 +573,7 @@ async function loadFilesIntoQueue(fileEntries) {
 
     processed.push({
       name: item.file.name,
-      path: item.path,
+      path: normPath,
       content,
       isBase64: isBinary,
       size: item.file.size,
@@ -545,6 +582,7 @@ async function loadFilesIntoQueue(fileEntries) {
   }
 
   appState.queuedFiles = processed;
+  appState.excludedFiles = excluded;
   renderQueuedFiles();
   updateFileLimitsTile();
   validateDeployButtonState();
@@ -561,8 +599,10 @@ function removeSingleQueuedFile(index) {
 
 function clearQueuedFiles() {
   appState.queuedFiles = [];
+  appState.excludedFiles = [];
   if (el.fileInput) el.fileInput.value = '';
   if (el.folderInput) el.folderInput.value = '';
+  if (el.excludedFilesAlert) el.excludedFilesAlert.style.display = 'none';
   renderQueuedFiles();
   updateFileLimitsTile();
   validateDeployButtonState();
@@ -575,11 +615,25 @@ function renderQueuedFiles() {
     el.clearFilesBtn.style.display = 'none';
     el.payloadSummary.innerText = 'Select folder or files';
     el.entryFileAlert.style.display = 'none';
+    if (el.excludedFilesAlert) el.excludedFilesAlert.style.display = 'none';
     return;
   }
 
   el.queuedFilesBox.style.display = 'block';
   el.clearFilesBtn.style.display = 'inline-flex';
+
+  // Show excluded sensitive files banner before deploy
+  if (el.excludedFilesAlert) {
+    if (appState.excludedFiles && appState.excludedFiles.length > 0) {
+      el.excludedFilesAlert.style.display = 'block';
+      const count = appState.excludedFiles.length;
+      const fileNames = appState.excludedFiles.slice(0, 3).map(p => p.split('/').pop()).join(', ');
+      const more = count > 3 ? '...' : '';
+      el.excludedFilesAlert.innerText = `${count} file${count === 1 ? '' : 's'} excluded: ${fileNames}${more}`;
+    } else {
+      el.excludedFilesAlert.style.display = 'none';
+    }
+  }
 
   const count = appState.queuedFiles.length;
   const totalFormatted = formatBytes(appState.queuedFiles.reduce((acc, f) => acc + (f.size || 0), 0));

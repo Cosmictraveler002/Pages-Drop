@@ -127,18 +127,33 @@ app.post('/api/deployments/generate', async (req, res) => {
     }
 
     // Stage files on disk
-    const staged = prepareStaging({
-      slug,
-      html,
-      files,
-      title: pageTitle,
-      mode,
-      autoRenameIndex: Boolean(autoRenameIndex)
-    });
+    let staged;
+    try {
+      staged = prepareStaging({
+        slug,
+        html,
+        files,
+        title: pageTitle,
+        mode,
+        autoRenameIndex: Boolean(autoRenameIndex)
+      });
+    } catch (err) {
+      if (err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' || (err.message && err.message.includes('exceeds Cloudflare Pages'))) {
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      throw err;
+    }
 
     // Deploy logs collector
     const logs = [];
     const onLog = (msg) => logs.push(msg);
+
+    if (staged.excludedFiles && staged.excludedFiles.length > 0) {
+      onLog(`[SECURITY] Excluded ${staged.excludedFiles.length} sensitive file(s): ${staged.excludedFiles.join(', ')}`);
+    }
+    if (staged.rejectedFiles && staged.rejectedFiles.length > 0) {
+      onLog(`[SECURITY] Rejected ${staged.rejectedFiles.length} invalid/malformed file path(s)`);
+    }
 
     const deployResult = await deployWithWrangler({
       deployDir: staged.deployDir,
@@ -160,6 +175,8 @@ app.post('/api/deployments/generate', async (req, res) => {
       slug: deployResult.slug,
       isSimulation: deployResult.isSimulation,
       fileCount: staged.fileCount,
+      excludedFiles: staged.excludedFiles || [],
+      rejectedFiles: staged.rejectedFiles || [],
       deployType,
       logs,
       quota: updatedQuota
