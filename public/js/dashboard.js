@@ -1428,7 +1428,11 @@ async function testToken() {
     });
     const data = await res.json();
     if (data.valid) {
-      el.testTokenResult.innerText = '[OK] Token valid & active';
+      if (data.permissionsWarning) {
+        el.testTokenResult.innerText = `[Warning] ${data.permissionsWarning}`;
+      } else {
+        el.testTokenResult.innerText = '[OK] Token valid & active (Pages Edit)';
+      }
       el.testTokenResult.style.color = '#000000';
     } else {
       el.testTokenResult.innerText = `[Error] ${data.message || 'Invalid token'}`;
@@ -1446,15 +1450,15 @@ async function saveSettings() {
   const projectName = el.settingsProjectName.value.trim() || 'random-pages-vault';
   const dailyFreeLimit = parseInt(el.settingsDailyLimit.value, 10) || 100;
 
-  const deviceVault = {
-    deviceId: appState.deviceId,
-    accountId,
-    apiToken,
-    projectName,
-    dailyLimit: dailyFreeLimit,
-    savedAt: new Date().toISOString()
-  };
-  localStorage.setItem(`cf_device_vault_${appState.deviceId}`, JSON.stringify(deviceVault));
+  // Clean any legacy plaintext credentials from localStorage
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('cf_device_vault_')) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (_) {}
 
   try {
     const res = await apiFetch('/api/config', {
@@ -1464,7 +1468,8 @@ async function saveSettings() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast('Settings saved to device storage');
+      showToast('Settings saved to secure server storage');
+      el.settingsApiToken.value = ''; // Do not keep token in DOM input
       el.settingsModal.style.display = 'none';
       fetchStatus(true);
     } else {

@@ -38,16 +38,18 @@ app.post('/api/auth/register', (req, res) => {
 app.use('/api', originCheckMiddleware);
 app.use('/api', authMiddleware);
 
+const { maskSecret } = require('../lib/crypto-vault');
+
 // API: Check device credentials & registration status
 app.get('/api/device', (req, res) => {
   const deviceId = req.deviceId;
-  const devConfig = getDeviceConfig(deviceId);
+  const cfg = getConfig(deviceId);
   res.json({
-    registered: Boolean(devConfig && devConfig.apiToken),
+    registered: true,
     deviceId,
-    projectName: (devConfig && devConfig.projectName) || config.projectName,
-    hasToken: Boolean(devConfig && devConfig.apiToken),
-    updatedAt: devConfig ? devConfig.updatedAt : null
+    projectName: cfg.projectName,
+    hasCredentials: cfg.hasCredentials,
+    accountIdMasked: cfg.accountId ? maskSecret(cfg.accountId) : null
   });
 });
 
@@ -204,15 +206,22 @@ app.post('/api/config', (req, res) => {
   try {
     const deviceId = req.deviceId;
     const { accountId, apiToken, projectName, dailyFreeLimit } = req.body;
-    const updated = updateConfig({
+    const result = updateConfig({
       accountId,
       apiToken,
       projectName,
       dailyFreeLimit: dailyFreeLimit ? parseInt(dailyFreeLimit, 10) : undefined
     }, deviceId);
-    res.json({ success: true, config: updated, deviceId });
+    res.json({
+      success: true,
+      hasCredentials: result.hasCredentials,
+      accountIdMasked: result.accountIdMasked,
+      projectName: result.projectName,
+      dailyFreeLimit: result.dailyFreeLimit,
+      deviceId
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 
