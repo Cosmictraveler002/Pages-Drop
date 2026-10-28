@@ -1118,6 +1118,8 @@ async function handleDeploySubmit(e) {
 
   el.terminalOutput.innerText = `[INIT] Starting direct deployment for slug: ${slug}...\n[INIT] Mode: ${mode} | Queued: ${files.length} files\n`;
 
+  const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+
   try {
     setTimeout(() => {
       if (appState.abortController) {
@@ -1128,9 +1130,13 @@ async function handleDeploySubmit(e) {
 
     const res = await apiFetch('/api/deployments/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-Id': requestId
+      },
       signal: appState.abortController.signal,
       body: JSON.stringify({
+        requestId,
         customSlug: slug,
         title,
         subtitle,

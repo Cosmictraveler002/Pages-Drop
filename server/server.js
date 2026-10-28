@@ -65,11 +65,39 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// API: Get list of deployed links
+// Idempotency cache for deployments (requestId -> { inFlight, result, timestamp })
+const deployIdempotencyCache = new Map();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, item] of deployIdempotencyCache.entries()) {
+    if (now - item.timestamp > 5 * 60 * 1000) {
+      deployIdempotencyCache.delete(key);
+    }
+  }
+}, 60 * 1000);
+
+// API: Get list of deployed links (caller records only + pagination)
 app.get('/api/deployments', (req, res) => {
   try {
-    const deployments = getLocalDeployments();
-    res.json({ success: true, deployments });
+    const deviceId = req.deviceId;
+    const callerDeployments = getLocalDeployments(deviceId);
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+    const paginated = callerDeployments.slice(offset, offset + limit);
+
+    res.json({
+      success: true,
+      deployments: paginated,
+      pagination: {
+        page,
+        limit,
+        total: callerDeployments.length,
+        totalPages: Math.ceil(callerDeployments.length / limit) || 1
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -79,6 +107,26 @@ app.get('/api/deployments', (req, res) => {
 app.post('/api/deployments/generate', async (req, res) => {
   try {
     const deviceId = req.deviceId;
+    const requestId = req.headers['x-request-id'] || req.body.requestId;
+
+    // Server-side deduplication by requestId (Idempotency)
+    if (requestId) {
+      const cached = deployIdempotencyCache.get(requestId);
+      if (cached) {
+        if (cached.inFlight) {
+          try {
+            const result = await cached.inFlight;
+            return res.json({ ...result, idempotentReplay: true });
+          } catch (inFlightErr) {
+            return res.status(500).json({ success: false, error: inFlightErr.message });
+          }
+        }
+        if (cached.result) {
+          return res.json({ ...cached.result, idempotentReplay: true });
+        }
+      }
+    }
+
     const {
       files = [],
       title,
@@ -91,97 +139,118 @@ app.post('/api/deployments/generate', async (req, res) => {
       autoRenameIndex = true
     } = req.body;
 
-    // Check quota before proceeding
-    const quota = await getQuotaStatus(false, deviceId);
-    if (quota.daily.isExceeded) {
-      return res.status(429).json({
-        success: false,
-        error: `Daily free tier deployment limit reached (${quota.daily.limit}/${quota.daily.limit}). Next reset in ${quota.reset.countdownFormatted}.`
-      });
-    }
-
-    const slug = (customSlug && customSlug.trim())
-      ? customSlug.toLowerCase().replace(/[^a-z0-9-]/g, '')
-      : generateRandomSlug({ prefix, length: 7 });
-
-    const pageTitle = title || `Drop ${slug.toUpperCase()}`;
-    const pageSubtitle = subtitle || 'Generated live via Cloudflare Pages Direct Upload CLI Workflow';
-    const pageContent = content || 'Live static endpoint served from Cloudflare global Edge CDN.';
-
-    // Compile single fallback HTML if no files were dropped
-    let html = null;
-    if (!files || files.length === 0) {
-      html = buildPageHtml({
-        template: 'landing',
-        title: pageTitle,
-        subtitle: pageSubtitle,
-        content: pageContent,
-        slug
-      });
-    }
-
-    // Determine deployment type
-    let deployType = 'direct';
-    if (files && files.length > 0) {
-      deployType = files.length === 1 ? 'file' : 'folder';
-    }
-
-    // Stage files on disk
-    let staged;
-    try {
-      staged = prepareStaging({
-        slug,
-        html,
-        files,
-        title: pageTitle,
-        mode,
-        autoRenameIndex: Boolean(autoRenameIndex)
-      });
-    } catch (err) {
-      if (err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' || (err.message && err.message.includes('exceeds Cloudflare Pages'))) {
-        return res.status(400).json({ success: false, error: err.message });
+    const executeDeploy = async () => {
+      // Check quota before proceeding (account/project wide)
+      const quota = await getQuotaStatus(false, deviceId);
+      if (quota.daily.isExceeded) {
+        const err = new Error(`Daily free tier deployment limit reached (${quota.daily.limit}/${quota.daily.limit}). Next reset in ${quota.reset.countdownFormatted}.`);
+        err.statusCode = 429;
+        throw err;
       }
-      throw err;
+
+      const slug = (customSlug && customSlug.trim())
+        ? customSlug.toLowerCase().replace(/[^a-z0-9-]/g, '')
+        : generateRandomSlug({ prefix, length: 7 });
+
+      const pageTitle = title || `Drop ${slug.toUpperCase()}`;
+      const pageSubtitle = subtitle || 'Generated live via Cloudflare Pages Direct Upload CLI Workflow';
+      const pageContent = content || 'Live static endpoint served from Cloudflare global Edge CDN.';
+
+      // Compile single fallback HTML if no files were dropped
+      let html = null;
+      if (!files || files.length === 0) {
+        html = buildPageHtml({
+          template: 'landing',
+          title: pageTitle,
+          subtitle: pageSubtitle,
+          content: pageContent,
+          slug
+        });
+      }
+
+      // Determine deployment type
+      let deployType = 'direct';
+      if (files && files.length > 0) {
+        deployType = files.length === 1 ? 'file' : 'folder';
+      }
+
+      // Stage files on disk
+      let staged;
+      try {
+        staged = prepareStaging({
+          slug,
+          html,
+          files,
+          title: pageTitle,
+          mode,
+          autoRenameIndex: Boolean(autoRenameIndex)
+        });
+      } catch (err) {
+        if (err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' || (err.message && err.message.includes('exceeds Cloudflare Pages'))) {
+          err.statusCode = 400;
+        }
+        throw err;
+      }
+
+      // Deploy logs collector
+      const logs = [];
+      const onLog = (msg) => logs.push(msg);
+
+      if (staged.excludedFiles && staged.excludedFiles.length > 0) {
+        onLog(`[SECURITY] Excluded ${staged.excludedFiles.length} sensitive file(s): ${staged.excludedFiles.join(', ')}`);
+      }
+      if (staged.rejectedFiles && staged.rejectedFiles.length > 0) {
+        onLog(`[SECURITY] Rejected ${staged.rejectedFiles.length} invalid/malformed file path(s)`);
+      }
+
+      const deployResult = await deployWithWrangler({
+        deployDir: staged.deployDir,
+        slug,
+        mode,
+        title: pageTitle,
+        template: deployType,
+        deviceId,
+        dryRun: Boolean(dryRun),
+        onLog
+      });
+
+      const updatedQuota = await getQuotaStatus(false, deviceId);
+
+      return {
+        success: true,
+        deployment: deployResult.record,
+        url: deployResult.url,
+        slug: deployResult.slug,
+        isSimulation: deployResult.isSimulation,
+        fileCount: staged.fileCount,
+        excludedFiles: staged.excludedFiles || [],
+        rejectedFiles: staged.rejectedFiles || [],
+        deployType,
+        logs,
+        quota: updatedQuota
+      };
+    };
+
+    let result;
+    if (requestId) {
+      const deployPromise = executeDeploy();
+      deployIdempotencyCache.set(requestId, { inFlight: deployPromise, timestamp: Date.now() });
+      try {
+        result = await deployPromise;
+        deployIdempotencyCache.set(requestId, { result, timestamp: Date.now() });
+      } catch (deployErr) {
+        deployIdempotencyCache.delete(requestId);
+        throw deployErr;
+      }
+    } else {
+      result = await executeDeploy();
     }
 
-    // Deploy logs collector
-    const logs = [];
-    const onLog = (msg) => logs.push(msg);
-
-    if (staged.excludedFiles && staged.excludedFiles.length > 0) {
-      onLog(`[SECURITY] Excluded ${staged.excludedFiles.length} sensitive file(s): ${staged.excludedFiles.join(', ')}`);
-    }
-    if (staged.rejectedFiles && staged.rejectedFiles.length > 0) {
-      onLog(`[SECURITY] Rejected ${staged.rejectedFiles.length} invalid/malformed file path(s)`);
-    }
-
-    const deployResult = await deployWithWrangler({
-      deployDir: staged.deployDir,
-      slug,
-      mode,
-      title: pageTitle,
-      template: deployType,
-      deviceId,
-      dryRun: Boolean(dryRun),
-      onLog
-    });
-
-    const updatedQuota = await getQuotaStatus(false, deviceId);
-
-    res.json({
-      success: true,
-      deployment: deployResult.record,
-      url: deployResult.url,
-      slug: deployResult.slug,
-      isSimulation: deployResult.isSimulation,
-      fileCount: staged.fileCount,
-      excludedFiles: staged.excludedFiles || [],
-      rejectedFiles: staged.rejectedFiles || [],
-      deployType,
-      logs,
-      quota: updatedQuota
-    });
+    res.json(result);
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ success: false, error: err.message });
+    }
     console.error('Generation error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
@@ -242,10 +311,10 @@ app.post('/api/config', (req, res) => {
   }
 });
 
-// API: Delete a deployment from tracker
-app.delete('/api/deployments/:id', (req, res) => {
+// API: Delete a deployment from tracker (ensuring device ownership)
+app.delete('/api/deployments/:id', async (req, res) => {
   try {
-    removeDeploymentRecord(req.params.id);
+    await removeDeploymentRecord(req.params.id, req.deviceId);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
