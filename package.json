@@ -12,6 +12,8 @@
     "deploy:random": "node cli/cli.js --deploy",
     "deploy:preview": "node cli/cli.js --dry-run",
     "status": "node cli/cli.js --status",
+    "test": "node tests/security_regression.test.js",
+    "test:security": "node tests/security_regression.test.js",
     "cf:login": "npx wrangler login",
     "cf:whoami": "npx wrangler whoami",
     "cf:projects": "npx wrangler pages project list"
@@ -34,6 +36,7 @@
     "express": "^5.3.0"
   },
   "devDependencies": {
+    "playwright": "^1.64.1",
     "wrangler": "^4.153.0"
   }
 }
