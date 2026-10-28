@@ -15,6 +15,7 @@ const appState = {
   autoRenameIndex: true,
   queuedFiles: [],                // Array of { name, path, content, isBase64, size, type }
   excludedFiles: [],              // Excluded sensitive/traversal files
+  isLinked: false,                // Device link state
   abortController: null,
   activeDeleteConfirmSlug: null,
   sortMode: 'newest'
@@ -30,6 +31,8 @@ const CF_LIMITS = {
 const el = {
   // Top Bar
   connectionBadge: document.getElementById('connectionBadge'),
+  unlinkedBanner: document.getElementById('unlinkedBanner'),
+  relinkDeviceBtn: document.getElementById('relinkDeviceBtn'),
   syncStatusBtn: document.getElementById('syncStatusBtn'),
   openSettingsBtn: document.getElementById('openSettingsBtn'),
 
@@ -179,26 +182,87 @@ const el = {
 // ==========================================================================
 
 async function initDeviceStorage() {
-  let id = localStorage.getItem('cf_device_id');
-  if (!id || !/^DEV-[A-Z0-9]{16}$/.test(id)) {
+  const id = localStorage.getItem('cf_device_id');
+  let isLinked = false;
+
+  if (id && /^DEV-[A-Z0-9]{16}$/.test(id)) {
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch('/api/device', {
+        headers: { 'X-Device-Id': id },
         credentials: 'same-origin'
       });
-      const data = await res.json();
-      if (data.success && data.deviceId) {
-        id = data.deviceId;
-        localStorage.setItem('cf_device_id', id);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.registered) {
+          isLinked = true;
+        }
       }
-    } catch (err) {
-      console.error('Failed to register device credentials:', err);
+    } catch (_) {}
+  }
+
+  if (isLinked) {
+    appState.deviceId = id;
+    appState.isLinked = true;
+    if (el.unlinkedBanner) el.unlinkedBanner.style.display = 'none';
+    if (el.settingsDeviceId) el.settingsDeviceId.innerText = id;
+  } else {
+    // DO NOT silently create orphan records. Show unlinked state with re-link action.
+    appState.deviceId = null;
+    appState.isLinked = false;
+    if (el.unlinkedBanner) el.unlinkedBanner.style.display = 'block';
+    if (el.settingsDeviceId) el.settingsDeviceId.innerText = 'NOT LINKED';
+  }
+}
+
+async function handleRelinkDevice() {
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin'
+    });
+    const data = await res.json();
+    if (data.success && data.deviceId) {
+      localStorage.setItem('cf_device_id', data.deviceId);
+      appState.deviceId = data.deviceId;
+      appState.isLinked = true;
+      if (el.unlinkedBanner) el.unlinkedBanner.style.display = 'none';
+      if (el.settingsDeviceId) el.settingsDeviceId.innerText = data.deviceId;
+      showToast('Device linked successfully!');
+      fetchStatus(true);
+      fetchDeployments();
+      validateDeployButtonState();
+    }
+  } catch (err) {
+    showToast('Failed to link device: ' + err.message, 'error');
+  }
+}
+
+function loadSavedPreferences() {
+  const savedMode = localStorage.getItem('cf_pref_mode');
+  if (savedMode === 'path' || savedMode === 'branch') {
+    appState.activeMode = savedMode;
+    if (savedMode === 'path') {
+      el.modePathOption.classList.add('selected');
+      el.modeBranchOption.classList.remove('selected');
+      el.modePathOption.querySelector('.arch-radio-mark').innerText = '[✓]';
+      el.modeBranchOption.querySelector('.arch-radio-mark').innerText = '[ ]';
+      el.modePathOption.querySelector('input').checked = true;
+    } else {
+      el.modeBranchOption.classList.add('selected');
+      el.modePathOption.classList.remove('selected');
+      el.modeBranchOption.querySelector('.arch-radio-mark').innerText = '[✓]';
+      el.modePathOption.querySelector('.arch-radio-mark').innerText = '[ ]';
+      el.modeBranchOption.querySelector('input').checked = true;
     }
   }
-  appState.deviceId = id;
-  if (el.settingsDeviceId) {
-    el.settingsDeviceId.innerText = id || 'DEV-CONNECTING...';
+
+  const savedAutoRename = localStorage.getItem('cf_pref_auto_rename');
+  if (savedAutoRename !== null) {
+    appState.autoRenameIndex = savedAutoRename === 'true';
+    if (el.autoRenameCheckbox) {
+      el.autoRenameCheckbox.checked = appState.autoRenameIndex;
+    }
   }
 }
 
@@ -216,6 +280,7 @@ function apiFetch(url, options = {}) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initDeviceStorage();
+  loadSavedPreferences();
   generateNewSlug();
   bindEvents();
   initDropZone();
@@ -223,10 +288,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateFileLimitsTile();
   validateDeployButtonState();
 
-  fetchStatus(true);
-  fetchDeployments();
+  if (appState.isLinked) {
+    fetchStatus(true);
+    fetchDeployments();
+  }
 
-  setInterval(() => fetchStatus(false), 25000);
+  setInterval(() => {
+    if (appState.isLinked) fetchStatus(false);
+  }, 25000);
   setInterval(tickCountdown, 1000);
 });
 
@@ -697,6 +766,13 @@ window.removeSingleQueuedFile = removeSingleQueuedFile;
 // ==========================================================================
 
 function validateDeployButtonState() {
+  if (!appState.isLinked) {
+    el.deployBtn.disabled = true;
+    el.deployBtnText.innerText = 'Link device to deploy';
+    el.deployReasonText.innerText = 'This browser is not linked to a device session.';
+    return;
+  }
+
   const hasFiles = appState.queuedFiles.length > 0;
   const isQuotaExceeded = appState.quota && appState.quota.daily && (appState.quota.daily.remaining <= 0 || appState.quota.daily.isExceeded);
   const slug = el.slugInput.value.trim();
@@ -1286,9 +1362,14 @@ function bindEvents() {
     el.prefixInput.addEventListener('input', generateNewSlug);
   }
 
+  if (el.relinkDeviceBtn) {
+    el.relinkDeviceBtn.addEventListener('click', handleRelinkDevice);
+  }
+
   // 6. Selected URL Style: black inverted card + 8px orange left edge + orange [✓]
   el.modeBranchOption.addEventListener('click', () => {
     appState.activeMode = 'branch';
+    localStorage.setItem('cf_pref_mode', 'branch');
     el.modeBranchOption.classList.add('selected');
     el.modePathOption.classList.remove('selected');
     el.modeBranchOption.querySelector('.arch-radio-mark').innerText = '[✓]';
@@ -1299,6 +1380,7 @@ function bindEvents() {
 
   el.modePathOption.addEventListener('click', () => {
     appState.activeMode = 'path';
+    localStorage.setItem('cf_pref_mode', 'path');
     el.modePathOption.classList.add('selected');
     el.modeBranchOption.classList.remove('selected');
     el.modePathOption.querySelector('.arch-radio-mark').innerText = '[✓]';
@@ -1336,6 +1418,7 @@ function bindEvents() {
     el.autoRenameCheckbox.checked = appState.autoRenameIndex;
     el.autoRenameCheckbox.addEventListener('change', (e) => {
       appState.autoRenameIndex = e.target.checked;
+      localStorage.setItem('cf_pref_auto_rename', String(appState.autoRenameIndex));
       renderQueuedFiles();
     });
   }
@@ -1420,26 +1503,17 @@ window.openQrModal = function(url, slug = '') {
 };
 
 function drawQrToCanvas(text, canvas) {
-  const ctx = canvas.getContext('2d');
-  const size = canvas.width;
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, size, size);
-
-  const img = new Image();
-  img.crossOrigin = 'Anonymous';
-  img.onload = () => {
-    ctx.drawImage(img, 10, 10, size - 20, size - 20);
-  };
-  img.onerror = () => {
+  if (window.LocalQRCode) {
+    window.LocalQRCode.draw(text, canvas, { margin: 4 });
+  } else {
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width || 200;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, size, size);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(20, 20, 50, 50);
-    ctx.fillRect(size - 70, 20, 50, 50);
-    ctx.fillRect(20, size - 70, 50, 50);
     ctx.font = '12px monospace';
-    ctx.fillStyle = '#000000';
-    ctx.fillText('Live Endpoint QR', 30, size / 2);
-  };
-  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
+    ctx.fillText('Live Endpoint QR', 20, size / 2);
+  }
 }
 
 function downloadQrImage() {
