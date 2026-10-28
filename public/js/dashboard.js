@@ -1545,27 +1545,30 @@ function openSettings() {
 async function testToken() {
   const typedToken = el.settingsApiToken.value.trim();
   const typedAccountId = el.settingsAccountId.value.trim();
-  if (!typedToken) {
-    el.testTokenResult.innerText = 'Please enter an API token';
-    el.testTokenResult.style.color = '#000000';
-    return;
-  }
 
   el.testTokenResult.innerText = 'Verifying credentials...';
   el.testTokenResult.style.color = '#000000';
 
   try {
+    const payload = {};
+    if (typedToken) payload.apiToken = typedToken;
+    if (typedAccountId) payload.accountId = typedAccountId;
+
     const res = await apiFetch('/api/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiToken: typedToken, accountId: typedAccountId })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (data.valid) {
+      if (data.detectedAccountId && (!el.settingsAccountId.value || el.settingsAccountId.value.trim() === '')) {
+        el.settingsAccountId.value = data.detectedAccountId;
+      }
       if (data.permissionsWarning) {
         el.testTokenResult.innerText = `[Warning] ${data.permissionsWarning}`;
       } else {
-        el.testTokenResult.innerText = '[OK] Token valid & active (Pages Edit)';
+        const autoDetectedMsg = data.detectedAccountId ? ' · Account auto-detected' : '';
+        el.testTokenResult.innerText = `[OK] Token valid & active (Pages Edit)${autoDetectedMsg}`;
       }
       el.testTokenResult.style.color = '#000000';
     } else {
