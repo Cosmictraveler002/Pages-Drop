@@ -15,8 +15,22 @@ const {
 } = require('../lib/auth');
 const cfApi = require('../lib/cf-api');
 
+const crypto = require('crypto');
+
 const app = express();
 const config = getConfig();
+
+// Disable X-Powered-By
+app.disable('x-powered-by');
+
+// Security Headers: Content-Security-Policy, nosniff, no-referrer, frame-ancestors none
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
 
 // Support multi-file / folder uploads up to 50MB
 app.use(express.json({ limit: '50mb' }));
@@ -54,14 +68,14 @@ app.get('/api/device', (req, res) => {
 });
 
 // API: Get live quota status & countdown (device-aware)
-app.get('/api/status', async (req, res) => {
+app.get('/api/status', async (req, res, next) => {
   try {
     const sync = req.query.sync === 'true';
     const deviceId = req.deviceId;
     const status = await getQuotaStatus(sync, deviceId);
     res.json({ success: true, status, deviceId });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    next(err);
   }
 });
 
@@ -78,7 +92,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 // API: Get list of deployed links (caller records only + pagination)
-app.get('/api/deployments', (req, res) => {
+app.get('/api/deployments', (req, res, next) => {
   try {
     const deviceId = req.deviceId;
     const callerDeployments = getLocalDeployments(deviceId);
@@ -99,7 +113,7 @@ app.get('/api/deployments', (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    next(err);
   }
 });
 
@@ -312,13 +326,40 @@ app.post('/api/config', (req, res) => {
 });
 
 // API: Delete a deployment from tracker (ensuring device ownership)
-app.delete('/api/deployments/:id', async (req, res) => {
+app.delete('/api/deployments/:id', async (req, res, next) => {
   try {
     await removeDeploymentRecord(req.params.id, req.deviceId);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    next(err);
   }
+});
+
+// Central JSON Error Handler
+// 4xx returns message; 5xx returns "Internal server error" + masked log + requestId
+app.use((err, req, res, next) => {
+  const requestId = req.headers['x-request-id'] || `err_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const status = err.statusCode || err.status || 500;
+
+  if (status >= 400 && status < 500) {
+    return res.status(status).json({
+      success: false,
+      error: err.message || 'Client error'
+    });
+  }
+
+  // 5xx: Mask secrets in server log, never leak details to client
+  const maskedError = (err.stack || err.message || '')
+    .replace(/(cfat_[a-zA-Z0-9_-]{10,})/g, (m) => m.slice(0, 4) + '...' + m.slice(-4))
+    .replace(/([a-f0-9]{32})/gi, (m) => m.slice(0, 4) + '...' + m.slice(-4));
+
+  console.error(`[SERVER 500 ERROR] [RequestId: ${requestId}] ${err.name || 'Error'}: ${err.message}\n${maskedError}`);
+
+  return res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    requestId
+  });
 });
 
 // Fallback to index.html for SPA routes
