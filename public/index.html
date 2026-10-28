@@ -3,450 +3,536 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cloudflare Pages · Random Links Workflow & Quota Dashboard</title>
-  <meta name="description" content="Automated workflow with Cloudflare Pages CLI to generate live static pages with random links and track daily free tier limits in real time.">
+  <title>Cloudflare Pages — Direct Deployment Bento</title>
+  <meta name="description" content="Deploy static folders and files to Cloudflare Pages edge network instantly. Functional bento telemetry grid and real-time quota tracking.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <!-- Ambient background glow effects -->
-  <div class="glow-bg glow-orange"></div>
-  <div class="glow-bg glow-indigo"></div>
+  <div class="system-viewport">
 
-  <div class="app-layout">
-    <!-- Top Header -->
-    <header class="app-header" id="mainHeader">
-      <div class="header-left">
-        <div class="logo-mark">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
-          </svg>
-        </div>
-        <div>
-          <h1 class="app-title">Cloudflare Pages <span class="badge-tag">CLI Workflow</span></h1>
-          <p class="app-subtitle">Live Static Random Links Generator & Daily Free Quota Tracker</p>
-        </div>
+    <!-- TOP SYSTEM BAR -->
+    <header class="app-top-bar" role="banner">
+      <div class="top-bar-left">
+        <!-- BRAND CHIP "PAGES DROP" (Orange fill, black text) -->
+        <h1 class="brand-tag">PAGES DROP</h1>
       </div>
-
-      <div class="header-right">
-        <!-- Live Cloudflare API connection badge -->
-        <div class="status-pill" id="cfConnectionPill">
-          <span class="status-dot status-dot-warning" id="cfStatusDot"></span>
-          <span id="cfStatusText">Checking API...</span>
-        </div>
-
-        <!-- UTC Clock -->
-        <div class="utc-clock">
-          <span class="utc-label">UTC TIME</span>
-          <span id="utcClockTime" class="mono-text">--:--:--</span>
-        </div>
-
-        <!-- Settings Button -->
-        <button class="btn btn-outline" id="openSettingsBtn" title="Configure Cloudflare API credentials">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          <span>Cloudflare Config</span>
+      <div class="top-bar-right">
+        <span id="connectionBadge" class="connection-badge" style="display: none;" role="alert">
+          [!] Cloudflare offline
+        </span>
+        <button type="button" id="syncStatusBtn" class="btn-raw btn-sm" title="Refresh live telemetry from Cloudflare">
+          Refresh status
         </button>
-
-        <!-- Refresh Button -->
-        <button class="btn btn-icon" id="syncStatusBtn" title="Sync live stats with Cloudflare">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-            <path d="M16 21h5v-5"/>
-          </svg>
+        <button type="button" id="openSettingsBtn" class="btn-raw btn-sm" title="Configure Cloudflare API credentials">
+          Cloudflare settings
         </button>
       </div>
     </header>
 
-    <!-- Quota & Analytics Stats Grid -->
-    <section class="stats-grid" id="statsSection">
-      <!-- Card 1: Daily Free Quota -->
-      <div class="stat-card stat-card-highlight">
-        <div class="stat-header">
-          <div class="stat-meta">
-            <span class="stat-title">Daily Free Quota</span>
-            <span class="stat-subtitle">Direct Uploads (Today)</span>
-          </div>
-          <div class="stat-badge" id="dailySafetyBadge">Free Tier Safe</div>
-        </div>
-        <div class="stat-main">
-          <div class="stat-numbers">
-            <div class="stat-big-value" id="dailyRemainingDisplay">--</div>
-            <div class="stat-big-label">deployments left today</div>
-          </div>
-          <div class="stat-progress-container">
-            <div class="stat-progress-bar">
-              <div class="progress-fill" id="dailyProgressBar" style="width: 0%;"></div>
-            </div>
-            <div class="progress-labels">
-              <span id="dailyUsedLabel">Used: 0 / 100</span>
-              <span id="dailyPercentLabel">0%</span>
-            </div>
-          </div>
-        </div>
-      </div>
+    <!-- SECTION 01: FUNCTIONAL BENTO GRID (12 Columns Desktop) -->
+    <section class="bento-section" aria-label="Functional Deployment and Telemetry Bento">
+      <div class="bento-grid">
 
-      <!-- Card 2: Daily Auto-Reset Countdown -->
-      <div class="stat-card">
-        <div class="stat-header">
-          <div class="stat-meta">
-            <span class="stat-title">Daily Quota Auto-Reset</span>
-            <span class="stat-subtitle">Resets at 00:00:00 UTC</span>
+        <!-- 1. NEW DEPLOYMENT TILE (Largest, 6 cols x spans rows, top-left) -->
+        <article class="bento-tile tile-new-deploy" id="tileNewDeploy" role="region" aria-labelledby="tileNewDeployTitle">
+          <div class="tile-bar">
+            <h2 id="tileNewDeployTitle" class="tile-bar-title">NEW DEPLOYMENT</h2>
+            <span class="tile-tag-label">Primary task</span>
           </div>
-          <div class="clock-icon">⏳</div>
-        </div>
-        <div class="stat-main">
-          <div class="stat-numbers">
-            <div class="stat-big-value countdown-glow mono-text" id="resetCountdownDisplay">--:--:--</div>
-            <div class="stat-big-label">until 100% quota restores</div>
-          </div>
-          <div class="auto-sync-status">
-            <span class="pulse-indicator"></span>
-            <span>Auto-updating live every second</span>
-          </div>
-        </div>
-      </div>
 
-      <!-- Card 3: Monthly Build Allowance -->
-      <div class="stat-card">
-        <div class="stat-header">
-          <div class="stat-meta">
-            <span class="stat-title">Monthly Free Build Cap</span>
-            <span class="stat-subtitle">Calendar Month Quota</span>
-          </div>
-          <div class="stat-badge stat-badge-blue">500 Cap</div>
-        </div>
-        <div class="stat-main">
-          <div class="stat-numbers">
-            <div class="stat-big-value" id="monthlyRemainingDisplay">--</div>
-            <div class="stat-big-label">builds remaining this month</div>
-          </div>
-          <div class="stat-progress-container">
-            <div class="stat-progress-bar">
-              <div class="progress-fill progress-fill-blue" id="monthlyProgressBar" style="width: 0%;"></div>
-            </div>
-            <div class="progress-labels">
-              <span id="monthlyUsedLabel">Used: 0 / 500</span>
-              <span id="monthlyPercentLabel">0%</span>
-            </div>
-          </div>
-        </div>
-      </div>
+          <form id="generatorForm" class="deploy-form" novalidate>
 
-      <!-- Card 4: Active Project Stats -->
-      <div class="stat-card">
-        <div class="stat-header">
-          <div class="stat-meta">
-            <span class="stat-title">Project & Active Links</span>
-            <span class="stat-subtitle" id="cfProjectNameLabel">random-pages-vault</span>
-          </div>
-          <div class="stat-badge stat-badge-orange">Edge CDN</div>
-        </div>
-        <div class="stat-main">
-          <div class="stat-numbers">
-            <div class="stat-big-value" id="totalLinksDisplay">0</div>
-            <div class="stat-big-label">random pages generated</div>
-          </div>
-          <div class="bandwidth-pill">
-            <span>⚡ Bandwidth:</span>
-            <strong style="color: #10b981;">100% Unmetered Free</strong>
-          </div>
-        </div>
-      </div>
-    </section>
+            <!-- DROPZONE -->
+            <div class="field-group">
+              <div class="field-header">
+                <label id="filesLabel" class="field-label">Your files <span class="required-mark" aria-hidden="true">*</span></label>
+                <span id="payloadSummary" class="field-caption">Select folder or files</span>
+              </div>
 
-    <!-- Main Workspace (Generator Studio + Links Ledger) -->
-    <main class="main-grid">
-      <!-- Left Column: Generator Studio -->
-      <section class="card panel-generator" id="generatorPanel">
-        <div class="panel-header">
-          <div class="panel-title-group">
-            <div class="panel-icon">⚡</div>
-            <div>
-              <h2 class="panel-title">Static Page Generator</h2>
-              <p class="panel-desc">Generate live static pages with random links & direct Cloudflare CLI upload</p>
-            </div>
-          </div>
-        </div>
-
-        <form id="generatorForm" class="generator-form">
-          <!-- Deployment Mode Toggle -->
-          <div class="form-group">
-            <label class="form-label">
-              <span>Link URL Architecture</span>
-              <span class="label-hint">Choose how the random link is structured</span>
-            </label>
-            <div class="mode-toggle-group">
-              <label class="mode-option selected" id="modeBranchOption">
-                <input type="radio" name="deployMode" value="branch" checked>
-                <div class="mode-icon">🌐</div>
-                <div class="mode-details">
-                  <strong>Isolated Subdomain Branch</strong>
-                  <span class="mode-example">https://<em class="random-slug-preview">x7k9q2m</em>.pages.dev</span>
+              <!-- 5. DROPZONE DRAG-OVER: At rest black dashed; on dragenter 3px solid orange + inverted headline -->
+              <div class="drop-zone" id="dropZone" tabindex="0" role="region" aria-labelledby="filesLabel" aria-describedby="dropZoneDesc">
+                <div class="drop-prompt" id="dropPrompt">
+                  <div class="drop-title">Drop your folder or static files here</div>
+                  <div class="drop-desc" id="dropZoneDesc">Scans directories recursively. Subfolders and assets are preserved.</div>
                 </div>
-              </label>
 
-              <label class="mode-option" id="modePathOption">
-                <input type="radio" name="deployMode" value="path">
-                <div class="mode-icon">📁</div>
-                <div class="mode-details">
-                  <strong>Sub-Directory Path</strong>
-                  <span class="mode-example">https://project.pages.dev/r/<em class="random-slug-preview">x7k9q2m</em></span>
+                <div class="drop-actions">
+                  <label class="btn-raw btn-drop-pick" tabindex="0">
+                    Select files
+                    <input type="file" id="fileInput" multiple class="visually-hidden">
+                  </label>
+                  <label class="btn-raw btn-drop-pick" tabindex="0">
+                    Select folder
+                    <input type="file" id="folderInput" webkitdirectory directory class="visually-hidden">
+                  </label>
+                  <button type="button" class="btn-raw" id="clearFilesBtn" style="display: none;">
+                    Clear all
+                  </button>
                 </div>
-              </label>
-            </div>
-          </div>
 
-          <!-- Random Slug Config -->
-          <div class="form-row">
-            <div class="form-group" style="flex: 2;">
-              <label class="form-label" for="slugInput">
-                <span>Unique Random Slug</span>
-                <span class="label-hint">Auto-generated or custom</span>
-              </label>
-              <div class="input-with-button">
-                <input type="text" id="slugInput" class="form-control mono-text" placeholder="e.g. k9a2px1" required>
-                <button type="button" class="btn btn-secondary" id="randomizeSlugBtn" title="Generate New Random Slug">
-                  🎲 Randomize
-                </button>
+                <!-- Queued files feedback (Never orange) -->
+                <div class="queued-container" id="queuedFilesBox" style="display: none;">
+                  <div class="queued-summary-bar">
+                    <span id="queuedHeader">0 files queued</span>
+                    <span id="queuedSize">0 KB</span>
+                  </div>
+                  <div class="queued-scroll-area">
+                    <ul class="queued-list" id="queuedList" aria-label="Queued files for deployment"></ul>
+                  </div>
+                </div>
+
+                <!-- Entry file warning / info -->
+                <div id="entryFileAlert" class="entry-file-alert" style="display: none;" role="alert"></div>
+
+                <!-- Auto-rename Option Toggle -->
+                <div class="auto-rename-block">
+                  <label class="checkbox-row" for="autoRenameCheckbox">
+                    <input type="checkbox" id="autoRenameCheckbox" checked>
+                    <span class="checkbox-text">Auto-rename entry file to <code>index.html</code></span>
+                  </label>
+                  <p class="field-helper-text" id="renameHelpText">
+                    When checked, your primary HTML file is served at root <code>/</code> as <code>index.html</code>.
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div class="form-group" style="flex: 1;">
-              <label class="form-label" for="prefixInput">
-                <span>Optional Prefix</span>
-                <span class="label-hint">e.g. drop, note</span>
-              </label>
-              <input type="text" id="prefixInput" class="form-control" placeholder="drop">
+            <!-- SITE NAME -->
+            <div class="field-group">
+              <div class="field-header">
+                <label for="slugInput" class="field-label">Site name <span class="required-mark" aria-hidden="true">*</span></label>
+                <!-- 7. SITE NAME AVAILABILITY: Available is black text with check mark; Taken is orange badge with black text -->
+                <div id="slugAvailability" class="slug-status-indicator" aria-live="polite">Checking name...</div>
+              </div>
+              <div class="input-action-group">
+                <input type="text" id="slugInput" class="raw-input" placeholder="e.g. portfolio-launch" required aria-describedby="slugHelpText">
+                <button type="button" id="randomizeSlugBtn" class="btn-raw btn-addon" title="Generate a new random name">
+                  New random name
+                </button>
+              </div>
+              <p class="field-helper-text" id="slugHelpText">
+                Used in your live site URL. Lowercase letters, numbers, and hyphens only.
+              </p>
+            </div>
+
+            <!-- URL STYLE -->
+            <div class="field-group">
+              <fieldset class="arch-fieldset">
+                <legend class="field-label">URL style</legend>
+                <div class="arch-grid" role="radiogroup" aria-label="URL style options">
+
+                  <!-- 6. SELECTED URL STYLE: Black inverted card + 8px orange left edge + orange [✓] -->
+                  <label class="arch-card selected" id="modeBranchOption">
+                    <input type="radio" name="deployMode" value="branch" checked>
+                    <div class="arch-card-header">
+                      <span class="arch-radio-mark" aria-hidden="true">[✓]</span>
+                      <span class="arch-name">Subdomain</span>
+                    </div>
+                    <div class="arch-example">
+                      https://<span class="slug-preview-text">mysite</span>.pages.dev
+                    </div>
+                    <div class="arch-explanation">Isolated subdomain branch per deploy.</div>
+                  </label>
+
+                  <label class="arch-card" id="modePathOption">
+                    <input type="radio" name="deployMode" value="path">
+                    <div class="arch-card-header">
+                      <span class="arch-radio-mark" aria-hidden="true">[ ]</span>
+                      <span class="arch-name">Path directory</span>
+                    </div>
+                    <div class="arch-example">
+                      https://project.pages.dev/r/<span class="slug-preview-text">mysite</span>
+                    </div>
+                    <div class="arch-explanation">Unified path under single project domain.</div>
+                  </label>
+
+                </div>
+              </fieldset>
+            </div>
+
+            <!-- OPTIONAL DETAILS (Never orange) -->
+            <details class="optional-details-panel" id="optionalDetailsPanel">
+              <summary class="optional-details-summary">
+                <span>Optional details</span>
+                <span class="summary-hint">(prefix, headline, subtitle, notes)</span>
+              </summary>
+
+              <div class="optional-fields-body">
+                <div class="field-group">
+                  <label for="prefixInput" class="field-label">Site name prefix</label>
+                  <input type="text" id="prefixInput" class="raw-input" placeholder="e.g. preview, drop" aria-describedby="prefixHelp">
+                  <p class="field-helper-text" id="prefixHelp">Prepends a tag to your site name (e.g. "preview-mysite").</p>
+                </div>
+
+                <div class="field-group">
+                  <label for="pageTitleInput" class="field-label">Headline / Title</label>
+                  <input type="text" id="pageTitleInput" class="raw-input" placeholder="e.g. Product Demo Drop" aria-describedby="titleHelp">
+                  <p class="field-helper-text" id="titleHelp">Shown on generated fallback page if no HTML file is dropped.</p>
+                </div>
+
+                <div class="field-group">
+                  <label for="pageSubtitleInput" class="field-label">Subtitle</label>
+                  <input type="text" id="pageSubtitleInput" class="raw-input" placeholder="e.g. Distributed via Cloudflare Pages edge" aria-describedby="subHelp">
+                  <p class="field-helper-text" id="subHelp">Subtitle description shown on generated fallback page.</p>
+                </div>
+
+                <div class="field-group">
+                  <label for="pageContentInput" class="field-label">Body / Notes</label>
+                  <textarea id="pageContentInput" class="raw-textarea" rows="2" placeholder="e.g. Internal staging build for client review" aria-describedby="contentHelp"></textarea>
+                  <p class="field-helper-text" id="contentHelp">Recorded in deployment ledger notes for future reference.</p>
+                </div>
+              </div>
+            </details>
+
+            <!-- LIVE URL PREVIEW (Never orange) -->
+            <div class="live-url-card" aria-label="Resulting live URL preview">
+              <div class="live-url-meta">
+                <span class="live-url-tag">Live URL preview:</span>
+                <button type="button" id="copyLiveUrlBtn" class="btn-copy-preview" title="Copy preview link">
+                  Copy
+                </button>
+              </div>
+              <div id="liveFinalUrl" class="live-url-display">https://pages.dev</div>
+            </div>
+
+            <!-- 2. DEPLOY BUTTON (Full width, min 56px, orange fill + black text when enabled, hover black fill + orange text) -->
+            <div class="sticky-action-bar">
+              <button type="submit" class="btn-raw btn-deploy-cta" id="deployBtn" disabled aria-describedby="deployReasonText">
+                <span class="btn-spinner" id="deploySpinner" style="display: none;" aria-hidden="true"></span>
+                <span id="deployBtnText">Add files to deploy</span>
+              </button>
+
+              <div class="secondary-actions-row">
+                <button type="button" class="btn-raw btn-cancel-cta" id="cancelDeployBtn" style="display: none;">
+                  Cancel
+                </button>
+                <button type="button" class="btn-raw btn-preview-cta" id="previewBtn">
+                  Preview first
+                </button>
+              </div>
+
+              <div id="deployReasonText" class="deploy-disabled-reason" aria-live="polite"></div>
+            </div>
+
+          </form>
+
+          <!-- INLINE FEEDBACK (Never orange for success) -->
+          <div id="feedbackContainer" class="feedback-container" aria-live="polite" role="status">
+
+            <!-- Progress State -->
+            <div id="deployProgressBox" class="deploy-progress-box" style="display: none;">
+              <div class="progress-step-row">
+                <span class="progress-step-icon">[*]</span>
+                <span id="deployProgressMessage" class="progress-step-text">Preparing files...</span>
+              </div>
+              <div class="progress-track-bar">
+                <div id="deployProgressBarFill" class="progress-track-fill" style="width: 25%;"></div>
+              </div>
+            </div>
+
+            <!-- Error State -->
+            <div id="deployErrorBox" class="deploy-error-box" style="display: none;" role="alert">
+              <div class="error-title-row">
+                <strong>[ERROR] Deployment failed</strong>
+              </div>
+              <div id="deployErrorMessage" class="error-detail-text"></div>
+              <div class="error-action-row">
+                <span id="deployErrorResolution" class="error-resolution-text"></span>
+              </div>
+            </div>
+
+            <!-- Success State (Black/white structure, never orange) -->
+            <div id="deploySuccessBox" class="deploy-success-box" style="display: none;" role="region" aria-label="Deployment success result">
+              <div class="success-header-row">
+                <span class="success-badge">[LIVE] Deployment complete</span>
+                <span class="propagation-hint">Global edge propagation: 5–15s</span>
+              </div>
+              <div class="success-url-box">
+                <a href="#" id="successLiveUrlAnchor" target="_blank" rel="noopener noreferrer" class="success-url-link"></a>
+              </div>
+              <div class="success-action-buttons">
+                <button type="button" class="btn-raw btn-large" id="successCopyBtn">Copy link</button>
+                <button type="button" class="btn-raw btn-large" id="successOpenBtn">Open site</button>
+                <button type="button" class="btn-raw btn-large" id="successQrBtn">QR code</button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 9. WRANGLER CLI STREAM BAR: Standby neutral, Running orange marker, Error orange fill row -->
+          <details class="cli-details-drawer" id="terminalDetails">
+            <summary class="cli-details-summary">
+              <span>Wrangler CLI stream</span>
+              <span class="cli-status-tag" id="cliStatusTag">Standby</span>
+            </summary>
+            <div id="cliErrorBanner" class="cli-error-banner" style="display: none;"></div>
+            <pre class="terminal-body" id="terminalOutput">Awaiting command execution...</pre>
+          </details>
+        </article>
+
+        <!-- 1. HERO ELEMENT: UPLOADS LEFT TODAY TILE (Spans 2 columns, sits top-right) -->
+        <article class="bento-tile tile-metric tile-hero tile-state-ok" id="tileUploads" role="region" aria-labelledby="tileUploadsTitle" aria-live="polite">
+          <div class="tile-bar">
+            <h3 id="tileUploadsTitle" class="tile-bar-title">Uploads left today</h3>
+            <span id="uploadsStateBadge" class="tile-state-badge">OK</span>
+          </div>
+          <div class="tile-metric-body hero-body">
+            <!-- 120-160px ultra-bold tabular figures, orange on off-white, never wraps -->
+            <div class="hero-giant-number" id="dailyRemainingDisplay">--</div>
+            <div class="bento-subtext" id="dailySubtext">of 100 today</div>
+
+            <!-- Thin proportion bar -->
+            <div class="bento-thin-bar">
+              <div class="bento-thin-fill" id="dailyProgressBarFill" style="width: 0%;"></div>
+            </div>
+
+            <!-- One-line warning for LOW state -->
+            <div id="uploadsWarningLine" class="hero-warning-line" style="display: none;"></div>
+
+            <div class="tile-footer-info">
+              <div class="live-reset-clock" id="resetCountdownDisplay">Resets in --h --m</div>
+              <div class="tile-action-note" id="uploadsStateNote">Free quota resets daily at 00:00 UTC.</div>
             </div>
           </div>
+        </article>
 
-          <!-- Template Selection -->
-          <div class="form-group">
-            <label class="form-label">
-              <span>Template Design</span>
-              <span class="label-hint">Responsive, mobile-optimized aesthetic layout</span>
-            </label>
-            <div class="template-selector">
-              <label class="template-card selected" data-template="landing">
-                <input type="radio" name="pageTemplate" value="landing" checked>
-                <div class="template-badge">Popular</div>
-                <div class="template-icon">🚀</div>
-                <div class="template-name">Modern Landing</div>
-                <div class="template-desc">Hero cards, CTA & edge metadata</div>
-              </label>
+        <!-- 8. BUILDS LEFT THIS MONTH TILE (Black numeral at rest, orange bar only when >=80% used) -->
+        <article class="bento-tile tile-metric tile-state-ok" id="tileBuilds" role="region" aria-labelledby="tileBuildsTitle" aria-live="polite">
+          <div class="tile-bar">
+            <h3 id="tileBuildsTitle" class="tile-bar-title">Builds left this month</h3>
+            <span id="buildsStateBadge" class="tile-state-badge">OK</span>
+          </div>
+          <div class="tile-metric-body">
+            <!-- Black numeral at rest, no orange -->
+            <div class="bento-giant-number" id="monthlyRemainingDisplay">--</div>
+            <div class="bento-subtext" id="monthlySubtext">of 500 monthly builds</div>
 
-              <label class="template-card" data-template="secret">
-                <input type="radio" name="pageTemplate" value="secret">
-                <div class="template-badge">Encrypted</div>
-                <div class="template-icon">🔒</div>
-                <div class="template-name">Secret Note</div>
-                <div class="template-desc">Click-to-reveal protected message</div>
-              </label>
+            <!-- Thin proportion bar: black until 80% used, then orange -->
+            <div class="bento-thin-bar">
+              <div class="bento-thin-fill" id="monthlyProgressBarFill" style="width: 0%;"></div>
+            </div>
 
-              <label class="template-card" data-template="showcase">
-                <input type="radio" name="pageTemplate" value="showcase">
-                <div class="template-badge">Portfolio</div>
-                <div class="template-icon">💎</div>
-                <div class="template-name">Showcase Drop</div>
-                <div class="template-desc">Feature cards, print & share</div>
-              </label>
-
-              <label class="template-card" data-template="bio">
-                <input type="radio" name="pageTemplate" value="bio">
-                <div class="template-badge">Minimal</div>
-                <div class="template-icon">⚡</div>
-                <div class="template-name">Bio Link</div>
-                <div class="template-desc">Quick avatar & social redirector</div>
-              </label>
+            <div class="tile-footer-info">
+              <div class="live-reset-clock" id="monthlyResetNotice">Resets on 1st of next month</div>
+              <div class="tile-action-note">Global edge build allowance.</div>
             </div>
           </div>
+        </article>
 
-          <!-- Content Fields -->
-          <div class="form-group">
-            <label class="form-label" for="pageTitleInput">Page Headline / Title</label>
-            <input type="text" id="pageTitleInput" class="form-control" placeholder="e.g. Next-Gen Cloud Platform Drop" value="Instant Edge Static Drop">
+        <!-- 4. LAST DEPLOYMENT TILE (Never orange. On success, instant black header inversion for 10s) -->
+        <article class="bento-tile tile-last-deploy" id="tileLastDeploy" role="region" aria-labelledby="tileLastDeployTitle">
+          <div class="tile-bar" id="lastDeployTileBar">
+            <h3 id="tileLastDeployTitle" class="tile-bar-title">Last deployment</h3>
+            <span class="tile-tag-label" id="lastDeployTimeTag">Recent</span>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="pageSubtitleInput">Subtitle / Brief Description</label>
-            <input type="text" id="pageSubtitleInput" class="form-control" placeholder="Brief supporting description..." value="Deployed globally across 330+ Cloudflare Edge locations in milliseconds.">
+          <!-- Empty State -->
+          <div class="last-deploy-empty" id="lastDeployEmpty">
+            <div class="empty-notice-text">Nothing deployed yet.</div>
+            <div class="empty-sub-notice">Drop a folder in the New Deployment tile to generate your first live link.</div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="pageContentInput">Body Content / Message</label>
-            <textarea id="pageContentInput" class="form-control" rows="3" placeholder="Enter page text, announcement, or encrypted message...">This live static website was compiled and published instantly using the Cloudflare Pages Direct Upload CLI workflow. Enjoy zero cold starts and 100% free tier hosting.</textarea>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="generator-actions">
-            <button type="submit" class="btn btn-primary btn-large" id="deployBtn">
-              <span class="btn-spinner" id="deploySpinner" style="display: none;"></span>
-              <span id="deployBtnIcon">⚡</span>
-              <span id="deployBtnText">Generate & Deploy Live</span>
-            </button>
-
-            <button type="button" class="btn btn-secondary btn-large" id="previewBtn">
-              👁️ Visual Preview
-            </button>
-          </div>
-        </form>
-
-        <!-- Live CLI Execution Terminal Box -->
-        <div class="terminal-container" id="terminalContainer" style="display: none;">
-          <div class="terminal-header">
-            <div class="terminal-dots">
-              <span></span><span></span><span></span>
+          <!-- Content State -->
+          <div class="last-deploy-content" id="lastDeployContent" style="display: none;">
+            <div class="last-deploy-header">
+              <span class="last-deploy-name" id="lastDeployTitle">--</span>
+              <span class="last-deploy-time" id="lastDeployTime">--</span>
             </div>
-            <div class="terminal-title">Wrangler Pages CLI Stream</div>
-            <button class="terminal-close-btn" id="closeTerminalBtn">✕</button>
+            <div class="last-deploy-url-box">
+              <a href="#" target="_blank" rel="noopener noreferrer" class="last-deploy-link" id="lastDeployUrlAnchor">--</a>
+            </div>
+            <div class="last-deploy-actions">
+              <button type="button" class="btn-raw btn-sm" id="lastDeployCopyBtn">Copy link</button>
+              <button type="button" class="btn-raw btn-sm" id="lastDeployOpenBtn">Open site</button>
+              <button type="button" class="btn-raw btn-sm" id="lastDeployQrBtn">QR code</button>
+            </div>
           </div>
-          <pre class="terminal-body" id="terminalOutput">Awaiting command execution...</pre>
+        </article>
+
+        <!-- 5. YOUR SITES TILE (Never orange, inverts on hover/focus to black fill) -->
+        <article class="bento-tile tile-clickable tile-sites" id="tileSites" role="button" tabindex="0" aria-labelledby="tileSitesTitle">
+          <div class="tile-bar">
+            <h3 id="tileSitesTitle" class="tile-bar-title">Your sites</h3>
+            <span class="tile-action-hint">View all ↓</span>
+          </div>
+          <div class="tile-metric-body">
+            <div class="bento-giant-number" id="sitesCountDisplay">0</div>
+            <div class="bento-subtext">Active recorded sites</div>
+            <div class="tile-footer-info" style="margin-top: auto;">
+              <div class="sites-newest-text" id="sitesNewestDisplay">No deployments yet</div>
+              <div class="tile-action-note">Click to scroll to deployments ledger.</div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 6. FILE LIMITS TILE -->
+        <article class="bento-tile tile-limits tile-state-ok" id="tileLimits" role="region" aria-labelledby="tileLimitsTitle" aria-live="polite">
+          <div class="tile-bar">
+            <h3 id="tileLimitsTitle" class="tile-bar-title">File limits</h3>
+            <span id="limitsStateBadge" class="tile-state-badge">OK</span>
+          </div>
+          <div class="tile-metric-body">
+            <div class="bento-giant-number" id="limitsMetricDisplay">25 MB</div>
+            <div class="bento-subtext" id="limitsSubtext">Max per file · 20,000 files max</div>
+            <div class="tile-footer-info" style="margin-top: auto;">
+              <div class="limits-status-text" id="limitsContext">No files added yet · Ready for upload</div>
+              <div class="tile-action-note" id="limitsActionNote">Verified against Cloudflare Pages limits.</div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- SECTION 02: YOUR DEPLOYMENTS LEDGER -->
+    <section class="ledger-section" id="ledgerSection" aria-labelledby="sectionDeploymentsTitle">
+      <div class="section-bar">
+        <h2 id="sectionDeploymentsTitle" class="section-title">YOUR DEPLOYMENTS</h2>
+        <span id="deploymentsCountBadge" class="section-count-badge" aria-live="polite">Showing 0 of 0</span>
+      </div>
+
+      <!-- Filter and Sort Toolbar -->
+      <div class="ledger-controls-bar">
+        <div class="filter-input-wrap">
+          <label for="linksSearchInput" class="visually-hidden">Search deployments</label>
+          <input type="search" id="linksSearchInput" class="raw-input search-input" placeholder="Search by site name, title, or URL...">
         </div>
-      </section>
-
-      <!-- Right Column: Live Links Manager & Ledger -->
-      <section class="card panel-links" id="linksPanel">
-        <div class="panel-header">
-          <div class="panel-title-group">
-            <div class="panel-icon">🔗</div>
-            <div>
-              <h2 class="panel-title">Live Random Links</h2>
-              <p class="panel-desc">All live static pages deployed to Cloudflare Edge</p>
-            </div>
-          </div>
-
-          <div class="filter-controls">
-            <input type="text" id="linksSearchInput" class="search-input" placeholder="Search by slug or title...">
-          </div>
+        <div class="sort-select-wrap">
+          <label for="linksSortSelect" class="sort-label">Sort:</label>
+          <select id="linksSortSelect" class="raw-select">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="alpha">Site name (A–Z)</option>
+          </select>
         </div>
+      </div>
 
-        <!-- Links List Table -->
-        <div class="table-responsive">
-          <table class="links-table">
-            <thead>
-              <tr>
-                <th>Link ID & Page</th>
-                <th>Template</th>
-                <th>Live URL</th>
-                <th>Created</th>
-                <th style="text-align: right;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="linksTableBody">
-              <!-- Dynamically populated -->
-              <tr>
-                <td colspan="5" class="table-empty">
-                  <div class="empty-state">
-                    <div class="empty-icon">📂</div>
-                    <div class="empty-title">No pages deployed yet</div>
-                    <p class="empty-desc">Click "Generate & Deploy Live" above or run <code>node cli/cli.js --deploy</code></p>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+      <!-- Deployments Table -->
+      <div class="ledger-table-wrap">
+        <table class="raw-table" aria-label="List of active deployments">
+          <thead>
+            <tr>
+              <!-- 10. DEPLOYMENTS TABLE: Active sort header gets 3px orange underline -->
+              <th scope="col" id="colHeaderName" class="sort-active" style="width: 26%;">Site name</th>
+              <th scope="col" id="colHeaderStyle" style="width: 14%;">URL style</th>
+              <th scope="col" id="colHeaderUrl" style="width: 32%;">Destination link</th>
+              <th scope="col" id="colHeaderDate" style="width: 13%;">Deployed</th>
+              <th scope="col" style="width: 15%; text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="linksTableBody">
+            <tr>
+              <td colspan="5" class="table-empty-row">
+                No deployments yet. Drop a folder to create one.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SYSTEM FOOTER (Never orange) -->
+    <footer class="app-footer">
+      <div>Cloudflare Pages Direct Upload Pipeline · Bandwidth: Unmetered (Free)</div>
+      <div>Local Device Storage Active · 00:00 UTC Daily Restoration</div>
+    </footer>
+
   </div>
 
-  <!-- Modal: Live Preview -->
-  <div class="modal-backdrop" id="previewModal" style="display: none;">
+  <!-- MODAL: PREVIEW BUFFER -->
+  <div class="modal-backdrop" id="previewModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="previewModalTitle">
     <div class="modal-dialog modal-large">
       <div class="modal-header">
-        <div class="modal-title">Live Static Page Preview</div>
-        <button class="modal-close-btn" id="closePreviewModalBtn">✕</button>
+        <h3 class="modal-title" id="previewModalTitle">Preview buffer: Generated HTML</h3>
+        <button type="button" class="modal-close-btn" id="closePreviewModalBtn" aria-label="Close preview modal">[Close]</button>
       </div>
-      <div class="modal-body" style="padding: 0; height: 550px;">
-        <iframe id="previewIframe" style="width: 100%; height: 100%; border: none;"></iframe>
+      <div class="modal-body modal-body-iframe">
+        <iframe id="previewIframe" title="Page preview content"></iframe>
       </div>
     </div>
   </div>
 
-  <!-- Modal: QR Code Share -->
-  <div class="modal-backdrop" id="qrModal" style="display: none;">
+  <!-- MODAL: QR CODE SHARE & PNG DOWNLOAD -->
+  <div class="modal-backdrop" id="qrModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
     <div class="modal-dialog">
       <div class="modal-header">
-        <div class="modal-title">Instant Mobile QR Code</div>
-        <button class="modal-close-btn" id="closeQrModalBtn">✕</button>
+        <h3 class="modal-title" id="qrModalTitle">QR code: Mobile link</h3>
+        <button type="button" class="modal-close-btn" id="closeQrModalBtn" aria-label="Close QR modal">[Close]</button>
       </div>
-      <div class="modal-body text-center">
-        <p class="qr-subtitle" id="qrUrlLabel">https://pages.dev</p>
+      <div class="modal-body qr-canvas-frame">
+        <div class="qr-url-text" id="qrUrlLabel">https://pages.dev</div>
         <div class="qr-canvas-wrapper">
-          <canvas id="qrCanvas" width="220" height="220"></canvas>
+          <canvas id="qrCanvas" width="220" height="220" aria-label="QR Code barcode"></canvas>
         </div>
-        <p class="qr-hint">Scan with any smartphone camera to open live page</p>
+        <p class="field-helper-text">Scan with any phone camera or download as a PNG file.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" id="copyQrUrlBtn">📋 Copy Link</button>
-        <button class="btn btn-secondary" id="openQrUrlBtn">↗ Open Live</button>
+        <button type="button" class="btn-raw" id="downloadQrBtn">Download QR (.PNG)</button>
+        <button type="button" class="btn-raw" id="copyQrUrlBtn">Copy link</button>
+        <button type="button" class="btn-raw" id="openQrUrlBtn">Open site</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Cloudflare Settings -->
-  <div class="modal-backdrop" id="settingsModal" style="display: none;">
+  <!-- MODAL: CLOUDFLARE SETTINGS -->
+  <div class="modal-backdrop" id="settingsModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
     <div class="modal-dialog">
       <div class="modal-header">
-        <div class="modal-title">Cloudflare Configuration</div>
-        <button class="modal-close-btn" id="closeSettingsModalBtn">✕</button>
+        <h3 class="modal-title" id="settingsModalTitle">Cloudflare API credentials</h3>
+        <button type="button" class="modal-close-btn" id="closeSettingsModalBtn" aria-label="Close settings modal">[Close]</button>
       </div>
       <div class="modal-body">
-        <p class="settings-desc">
-          Configure your Cloudflare Account credentials to enable live deployments & real-time quota synchronization.
-        </p>
+        <div class="field-group">
+          <label class="field-label">Device identifier</label>
+          <div class="device-id-box" id="settingsDeviceId">DEV-LOCAL</div>
+          <p class="field-helper-text">Credentials are saved locally in your browser storage and isolated to this device.</p>
+        </div>
 
-        <form id="settingsForm">
-          <div class="form-group">
-            <label class="form-label" for="settingsAccountId">Cloudflare Account ID</label>
-            <input type="text" id="settingsAccountId" class="form-control mono-text" placeholder="e.g. 8f2a10b49c7...">
-            <span class="field-help">Found in Cloudflare Dashboard → Overview (right sidebar).</span>
+        <form id="settingsForm" novalidate>
+          <div class="field-group">
+            <label for="settingsAccountId" class="field-label">Account ID</label>
+            <input type="text" id="settingsAccountId" class="raw-input" placeholder="e.g. 0123456789abcdef0123456789abcdef" aria-describedby="accIdHelp">
+            <p class="field-helper-text" id="accIdHelp">Found in Cloudflare dashboard overview (right sidebar).</p>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="settingsApiToken">Cloudflare API Token</label>
-            <input type="password" id="settingsApiToken" class="form-control mono-text" placeholder="e.g. kA891-...">
-            <span class="field-help">Create at dash.cloudflare.com/profile/api-tokens with Pages:Edit permission.</span>
+          <div class="field-group">
+            <label for="settingsApiToken" class="field-label">API Token</label>
+            <input type="password" id="settingsApiToken" class="raw-input" placeholder="e.g. cfat_..." aria-describedby="tokenHelp">
+            <p class="field-helper-text" id="tokenHelp">Requires Cloudflare Pages:Edit permissions.</p>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="settingsProjectName">Pages Project Name</label>
-            <input type="text" id="settingsProjectName" class="form-control" placeholder="random-pages-vault">
-            <span class="field-help">Project will be auto-created if it does not exist yet.</span>
+          <div class="field-group">
+            <label for="settingsProjectName" class="field-label">Pages Project Name</label>
+            <input type="text" id="settingsProjectName" class="raw-input" placeholder="random-pages-vault" aria-describedby="projHelp">
+            <p class="field-helper-text" id="projHelp">Auto-created on your Cloudflare account upon your first deployment.</p>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="settingsDailyLimit">Daily Free Deployment Limit</label>
-            <input type="number" id="settingsDailyLimit" class="form-control" value="100" min="1" max="500">
-            <span class="field-help">Default is 100 safe deployments per day.</span>
+          <div class="field-group">
+            <label for="settingsDailyLimit" class="field-label">Daily free quota limit</label>
+            <input type="number" id="settingsDailyLimit" class="raw-input" value="100" min="1" max="500" aria-describedby="limitHelp">
+            <p class="field-helper-text" id="limitHelp">Cloudflare free tier includes 100 direct uploads per day.</p>
           </div>
 
           <div class="test-token-row">
-            <button type="button" class="btn btn-secondary" id="testTokenBtn">
-              🔍 Test API Connection
-            </button>
-            <span id="testTokenResult" class="test-result-msg"></span>
+            <button type="button" class="btn-raw" id="testTokenBtn">Test connection</button>
+            <span id="testTokenResult" class="test-result-msg" aria-live="polite"></span>
           </div>
         </form>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="cancelSettingsBtn">Cancel</button>
-        <button type="button" class="btn btn-primary" id="saveSettingsBtn">Save Configuration</button>
+        <button type="button" class="btn-raw" id="cancelSettingsBtn">Cancel</button>
+        <button type="button" class="btn-raw" id="saveSettingsBtn">Save to device storage</button>
       </div>
     </div>
   </div>
 
-  <!-- Toast Notification -->
-  <div class="toast-container" id="toastContainer"></div>
+  <!-- TOAST NOTIFICATIONS -->
+  <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Client Script -->
+  <!-- CLIENT SCRIPT -->
   <script src="/js/dashboard.js"></script>
 </body>
 </html>

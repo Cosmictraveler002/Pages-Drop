@@ -5,21 +5,46 @@ const { getConfig, updateConfig } = require('../lib/config');
 const { generateRandomSlug, buildPageHtml, prepareStaging } = require('../lib/page-generator');
 const { deployWithWrangler } = require('../lib/deployer');
 const { getQuotaStatus, getLocalDeployments, removeDeploymentRecord } = require('../lib/tracker');
+const { getDeviceConfig } = require('../lib/device-storage');
 const cfApi = require('../lib/cf-api');
 
 const app = express();
 const config = getConfig();
 
 app.use(cors());
-app.use(express.json());
+// Support multi-file / folder uploads up to 50MB
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
-// API: Get live quota status & countdown
+// Helper to extract device identifier
+function extractDeviceId(req) {
+  return req.headers['x-device-id'] || req.query.deviceId || (req.body && req.body.deviceId) || null;
+}
+
+// API: Check device credentials & registration status
+app.get('/api/device', (req, res) => {
+  const deviceId = extractDeviceId(req);
+  if (!deviceId) {
+    return res.json({ registered: false, deviceId: null, message: 'No Device ID provided' });
+  }
+  const devConfig = getDeviceConfig(deviceId);
+  res.json({
+    registered: Boolean(devConfig && devConfig.apiToken),
+    deviceId,
+    projectName: (devConfig && devConfig.projectName) || config.projectName,
+    hasToken: Boolean(devConfig && devConfig.apiToken),
+    updatedAt: devConfig ? devConfig.updatedAt : null
+  });
+});
+
+// API: Get live quota status & countdown (device-aware)
 app.get('/api/status', async (req, res) => {
   try {
     const sync = req.query.sync === 'true';
-    const status = await getQuotaStatus(sync);
-    res.json({ success: true, status });
+    const deviceId = extractDeviceId(req);
+    const status = await getQuotaStatus(sync, deviceId);
+    res.json({ success: true, status, deviceId });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -35,22 +60,24 @@ app.get('/api/deployments', (req, res) => {
   }
 });
 
-// API: Generate & Deploy a live static page
+// API: Generate & Deploy a live static page or dropped folder/files
 app.post('/api/deployments/generate', async (req, res) => {
   try {
+    const deviceId = extractDeviceId(req);
     const {
-      template = 'landing',
+      files = [],
       title,
       subtitle,
       content,
       prefix,
       customSlug,
       mode = 'branch',
-      dryRun = false
+      dryRun = false,
+      autoRenameIndex = true
     } = req.body;
 
     // Check quota before proceeding
-    const quota = await getQuotaStatus(false);
+    const quota = await getQuotaStatus(false, deviceId);
     if (quota.daily.isExceeded) {
       return res.status(429).json({
         success: false,
@@ -63,23 +90,35 @@ app.post('/api/deployments/generate', async (req, res) => {
       : generateRandomSlug({ prefix, length: 7 });
 
     const pageTitle = title || `Drop ${slug.toUpperCase()}`;
-    const pageSubtitle = subtitle || 'Generated live via Cloudflare Pages CLI Workflow';
-    const pageContent = content || 'Live static page served from Cloudflare global Edge CDN.';
+    const pageSubtitle = subtitle || 'Generated live via Cloudflare Pages Direct Upload CLI Workflow';
+    const pageContent = content || 'Live static endpoint served from Cloudflare global Edge CDN.';
 
-    // Compile HTML
-    const html = buildPageHtml({
-      template,
-      title: pageTitle,
-      subtitle: pageSubtitle,
-      content: pageContent,
-      slug
-    });
+    // Compile single fallback HTML if no files were dropped
+    let html = null;
+    if (!files || files.length === 0) {
+      html = buildPageHtml({
+        template: 'landing',
+        title: pageTitle,
+        subtitle: pageSubtitle,
+        content: pageContent,
+        slug
+      });
+    }
 
-    // Stage files
+    // Determine deployment type
+    let deployType = 'direct';
+    if (files && files.length > 0) {
+      deployType = files.length === 1 ? 'file' : 'folder';
+    }
+
+    // Stage files on disk
     const staged = prepareStaging({
       slug,
       html,
-      mode
+      files,
+      title: pageTitle,
+      mode,
+      autoRenameIndex: Boolean(autoRenameIndex)
     });
 
     // Deploy logs collector
@@ -91,12 +130,13 @@ app.post('/api/deployments/generate', async (req, res) => {
       slug,
       mode,
       title: pageTitle,
-      template,
+      template: deployType,
+      deviceId,
       dryRun: Boolean(dryRun),
       onLog
     });
 
-    const updatedQuota = await getQuotaStatus(false);
+    const updatedQuota = await getQuotaStatus(false, deviceId);
 
     res.json({
       success: true,
@@ -104,6 +144,8 @@ app.post('/api/deployments/generate', async (req, res) => {
       url: deployResult.url,
       slug: deployResult.slug,
       isSimulation: deployResult.isSimulation,
+      fileCount: staged.fileCount,
+      deployType,
       logs,
       quota: updatedQuota
     });
@@ -116,9 +158,9 @@ app.post('/api/deployments/generate', async (req, res) => {
 // API: Live HTML Preview (without deploying)
 app.post('/api/preview', (req, res) => {
   try {
-    const { template = 'landing', title, subtitle, content, slug = 'preview-demo' } = req.body;
+    const { title, subtitle, content, slug = 'preview-demo' } = req.body;
     const html = buildPageHtml({
-      template,
+      template: 'landing',
       title: title || 'Preview Page Title',
       subtitle: subtitle || 'Subtitle preview',
       content: content || 'Preview body content for live visual inspection.',
@@ -131,27 +173,31 @@ app.post('/api/preview', (req, res) => {
   }
 });
 
-// API: Verify Cloudflare Token & Account
+// API: Verify Cloudflare Token & Account (device-aware)
 app.post('/api/verify', async (req, res) => {
   try {
-    const result = await cfApi.verifyToken();
+    const deviceId = extractDeviceId(req);
+    const explicitToken = req.body && req.body.apiToken ? req.body.apiToken.trim() : null;
+    const explicitAccountId = req.body && req.body.accountId ? req.body.accountId.trim() : null;
+    const result = await cfApi.verifyToken(deviceId, explicitToken, explicitAccountId);
     res.json(result);
   } catch (err) {
     res.status(500).json({ valid: false, message: err.message });
   }
 });
 
-// API: Update Config Settings
+// API: Update Config Settings (stored locally per device & in .env)
 app.post('/api/config', (req, res) => {
   try {
+    const deviceId = extractDeviceId(req);
     const { accountId, apiToken, projectName, dailyFreeLimit } = req.body;
     const updated = updateConfig({
       accountId,
       apiToken,
       projectName,
       dailyFreeLimit: dailyFreeLimit ? parseInt(dailyFreeLimit, 10) : undefined
-    });
-    res.json({ success: true, config: updated });
+    }, deviceId);
+    res.json({ success: true, config: updated, deviceId });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -173,7 +219,20 @@ app.use((req, res) => {
 });
 
 const PORT = config.port || 3000;
-app.listen(PORT, () => {
+const HOST = config.host || '127.0.0.1';
+
+// Binding to any non-loopback host requires explicit env var and auth enabled
+const isLoopback = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
+if (!isLoopback) {
+  const allowExternal = process.env.ALLOW_EXTERNAL_BINDING === 'true';
+  const authEnabled = process.env.AUTH_ENABLED === 'true';
+  if (!allowExternal || !authEnabled) {
+    console.error('FATAL: Binding to external host requires ALLOW_EXTERNAL_BINDING=true and AUTH_ENABLED=true.');
+    process.exit(1);
+  }
+}
+
+app.listen(PORT, HOST, () => {
   console.log(`⚡ Cloudflare Pages Workflow & Auto-Updating Quota Dashboard running on:`);
-  console.log(`   👉 http://localhost:${PORT}`);
+  console.log(`   👉 http://${HOST}:${PORT}`);
 });
