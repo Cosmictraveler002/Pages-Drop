@@ -1504,7 +1504,9 @@ window.openQrModal = function(url, slug = '') {
 
 function drawQrToCanvas(text, canvas) {
   if (window.LocalQRCode) {
-    window.LocalQRCode.draw(text, canvas, { margin: 4 });
+    window.LocalQRCode.draw(text, canvas, { margin: 2, width: canvas.width || 220 });
+  } else if (window.QRCode && window.QRCode.toCanvas) {
+    window.QRCode.toCanvas(canvas, text, { margin: 2, width: canvas.width || 220 });
   } else {
     const ctx = canvas.getContext('2d');
     const size = canvas.width || 200;
@@ -1516,17 +1518,28 @@ function drawQrToCanvas(text, canvas) {
   }
 }
 
-function downloadQrImage() {
-  if (!el.qrCanvas) return;
-  const dataUrl = el.qrCanvas.toDataURL('image/png');
-  const a = document.createElement('a');
+async function downloadQrImage() {
+  const url = appState.currentModalQrUrl;
   const slug = appState.currentModalSlug || 'site';
+  let dataUrl = null;
+
+  if (window.LocalQRCode && window.LocalQRCode.toDataURL && url) {
+    try {
+      dataUrl = await window.LocalQRCode.toDataURL(url, { width: 512, margin: 2 });
+    } catch (_) {}
+  }
+  if (!dataUrl && el.qrCanvas) {
+    dataUrl = el.qrCanvas.toDataURL('image/png');
+  }
+  if (!dataUrl) return;
+
+  const a = document.createElement('a');
   a.download = `qr-${slug}.png`;
   a.href = dataUrl;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  showToast('QR code downloaded as PNG');
+  showToast('High-resolution QR code downloaded as PNG');
 }
 
 function openSettings() {

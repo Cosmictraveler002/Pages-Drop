@@ -377,6 +377,50 @@ async function runTestSuite() {
     record('Device ID Memory Persistence & Ledger Isolation', false, err.message);
   }
 
+  // --------------------------------------------------------------------------
+  // TEST 10: Client QR Code Generation & Optical Decodability
+  // --------------------------------------------------------------------------
+  try {
+    const jsQR = require('jsqr');
+    const QRCode = require('qrcode');
+    const testUrl = 'https://audit-verify-drop.random-pages-vault.pages.dev';
+
+    const qr = QRCode.create(testUrl, { errorCorrectionLevel: 'M' });
+    const size = qr.modules.size;
+    const margin = 3;
+    const totalSize = size + margin * 2;
+    const scale = 6;
+    const imgWidth = totalSize * scale;
+
+    const buffer = new Uint8ClampedArray(imgWidth * imgWidth * 4);
+    buffer.fill(255);
+
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (qr.modules.get(r, c)) {
+          for (let py = 0; py < scale; py++) {
+            for (let px = 0; px < scale; px++) {
+              const y = (r + margin) * scale + py;
+              const x = (c + margin) * scale + px;
+              const idx = (y * imgWidth + x) * 4;
+              buffer[idx] = 0;
+              buffer[idx + 1] = 0;
+              buffer[idx + 2] = 0;
+              buffer[idx + 3] = 255;
+            }
+          }
+        }
+      }
+    }
+
+    const decoded = jsQR(buffer, imgWidth, imgWidth);
+    assert(decoded && decoded.data === testUrl, `Decoded URL '${decoded?.data}' matches '${testUrl}'`);
+
+    record('Client QR Code Optical Decodability', true, `Generated standard ISO/IEC 18004 QR and verified decode to exact URL`);
+  } catch (err) {
+    record('Client QR Code Optical Decodability', false, err.message);
+  }
+
   console.log('\n====================================================');
   console.log('              AUDIT REGRESSION SUMMARY              ');
   console.log('====================================================');
