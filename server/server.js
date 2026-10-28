@@ -1,33 +1,46 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const { getConfig, updateConfig } = require('../lib/config');
 const { generateRandomSlug, buildPageHtml, prepareStaging } = require('../lib/page-generator');
 const { deployWithWrangler } = require('../lib/deployer');
 const { getQuotaStatus, getLocalDeployments, removeDeploymentRecord } = require('../lib/tracker');
 const { getDeviceConfig } = require('../lib/device-storage');
+const {
+  authMiddleware,
+  originCheckMiddleware,
+  issueDeviceCredentials,
+  setDeviceSecretCookie,
+  checkUnauthRateLimit,
+  getClientIp
+} = require('../lib/auth');
 const cfApi = require('../lib/cf-api');
 
 const app = express();
 const config = getConfig();
 
-app.use(cors());
 // Support multi-file / folder uploads up to 50MB
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
-// Helper to extract device identifier
-function extractDeviceId(req) {
-  return req.headers['x-device-id'] || req.query.deviceId || (req.body && req.body.deviceId) || null;
-}
+// API: Register device and issue credentials (unauthenticated, rate-limited)
+app.post('/api/auth/register', (req, res) => {
+  const ip = getClientIp(req);
+  if (!checkUnauthRateLimit(ip)) {
+    return res.status(429).json({ success: false, error: 'Registration rate limit exceeded. Try again in 1 minute.' });
+  }
+  const { deviceId, secret } = issueDeviceCredentials();
+  setDeviceSecretCookie(res, secret, req);
+  res.json({ success: true, deviceId });
+});
+
+// Protect all other /api routes with Origin check & Device Auth boundary
+app.use('/api', originCheckMiddleware);
+app.use('/api', authMiddleware);
 
 // API: Check device credentials & registration status
 app.get('/api/device', (req, res) => {
-  const deviceId = extractDeviceId(req);
-  if (!deviceId) {
-    return res.json({ registered: false, deviceId: null, message: 'No Device ID provided' });
-  }
+  const deviceId = req.deviceId;
   const devConfig = getDeviceConfig(deviceId);
   res.json({
     registered: Boolean(devConfig && devConfig.apiToken),
@@ -42,7 +55,7 @@ app.get('/api/device', (req, res) => {
 app.get('/api/status', async (req, res) => {
   try {
     const sync = req.query.sync === 'true';
-    const deviceId = extractDeviceId(req);
+    const deviceId = req.deviceId;
     const status = await getQuotaStatus(sync, deviceId);
     res.json({ success: true, status, deviceId });
   } catch (err) {
@@ -63,7 +76,7 @@ app.get('/api/deployments', (req, res) => {
 // API: Generate & Deploy a live static page or dropped folder/files
 app.post('/api/deployments/generate', async (req, res) => {
   try {
-    const deviceId = extractDeviceId(req);
+    const deviceId = req.deviceId;
     const {
       files = [],
       title,
@@ -176,7 +189,7 @@ app.post('/api/preview', (req, res) => {
 // API: Verify Cloudflare Token & Account (device-aware)
 app.post('/api/verify', async (req, res) => {
   try {
-    const deviceId = extractDeviceId(req);
+    const deviceId = req.deviceId;
     const explicitToken = req.body && req.body.apiToken ? req.body.apiToken.trim() : null;
     const explicitAccountId = req.body && req.body.accountId ? req.body.accountId.trim() : null;
     const result = await cfApi.verifyToken(deviceId, explicitToken, explicitAccountId);
@@ -189,7 +202,7 @@ app.post('/api/verify', async (req, res) => {
 // API: Update Config Settings (stored locally per device & in .env)
 app.post('/api/config', (req, res) => {
   try {
-    const deviceId = extractDeviceId(req);
+    const deviceId = req.deviceId;
     const { accountId, apiToken, projectName, dailyFreeLimit } = req.body;
     const updated = updateConfig({
       accountId,
