@@ -2,6 +2,29 @@
 
 A local web dashboard and command-line tool. You can deploy and manage static websites on Cloudflare Pages without exposing your secret credentials.
 
+## Quickstart
+
+1. Download the project and open the folder:
+```bash
+git clone https://github.com/Cosmictraveler002/Pages-Drop.git
+cd Pages-Drop
+```
+
+2. Start the application:
+```bash
+npm start
+```
+The startup script verifies your dependencies and launches the local server.
+
+3. Open your browser:
+```text
+http://localhost:3000
+```
+
+4. Connect your Cloudflare account:
+   - **Through the Web Dashboard (Recommended)**: Open the Connect Wizard in the dashboard. Paste your Cloudflare API token. The server verifies your token, finds your Account ID automatically, and saves your credentials in an encrypted local vault.
+   - **Through the Environment File (Headless or CLI)**: Copy `.env.example` to `.env`. Add your `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+
 ## Features
 
 - **Direct Edge Deployment**: Deploy static folders or single HTML files directly to Cloudflare Pages through Wrangler.
@@ -27,29 +50,6 @@ A local web dashboard and command-line tool. You can deploy and manage static we
   - `Account > Cloudflare Pages > Edit`
   - `Account > Account Settings > Read`
   - Refer to the [Cloudflare API Tokens documentation](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) for token creation steps.
-
-## Quickstart
-
-1. Download the project and open the folder:
-```bash
-git clone <repository-url>
-cd cloudflare-pages-dashboard
-```
-
-2. Start the application:
-```bash
-npm start
-```
-The startup script verifies your dependencies and launches the local server.
-
-3. Open your browser:
-```text
-http://localhost:3000
-```
-
-4. Connect your Cloudflare account:
-   - **Through the Web Dashboard (Recommended)**: Open the Connect Wizard in the dashboard. Paste your Cloudflare API token. The server verifies your token, finds your Account ID automatically, and saves your credentials in an encrypted local vault.
-   - **Through the Environment File (Headless or CLI)**: Copy `.env.example` to `.env`. Add your `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
 
 ## Configuration
 
