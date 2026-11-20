@@ -40,7 +40,10 @@ const {
   resetFailedAuth
 } = require('../lib/auth');
 
-const BASE_URL = 'http://127.0.0.1:3000';
+const app = require('../server/server');
+
+let BASE_URL = 'http://127.0.0.1:3000';
+let testServer = null;
 const DATA_DIR = path.resolve(__dirname, '../data');
 const DEPLOYMENTS_FILE = path.join(DATA_DIR, 'deployments.json');
 
@@ -48,6 +51,15 @@ async function runTestSuite() {
   console.log('====================================================');
   console.log('       SECURITY & QA AUDIT REGRESSION TEST SUITE     ');
   console.log('====================================================\n');
+
+  try {
+    await fetch(`${BASE_URL}/api/status`);
+  } catch (_) {
+    testServer = await new Promise(resolve => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+    BASE_URL = `http://127.0.0.1:${testServer.address().port}`;
+  }
 
   const results = [];
 
@@ -184,6 +196,9 @@ async function runTestSuite() {
       { method: 'GET', path: '/api/status' },
       { method: 'GET', path: '/api/deployments' },
       { method: 'POST', path: '/api/deployments/generate', body: { customSlug: 'unauth-test' } },
+      { method: 'POST', path: '/api/deployments/test-slug/pause' },
+      { method: 'POST', path: '/api/deployments/test-slug/resume' },
+      { method: 'POST', path: '/api/deployments/test-slug/redeploy', body: { files: [] } },
       { method: 'DELETE', path: '/api/deployments/test-slug' },
       { method: 'POST', path: '/api/verify', body: { apiToken: 'test' } },
       { method: 'POST', path: '/api/config', body: { projectName: 'test' } }
@@ -430,8 +445,14 @@ async function runTestSuite() {
   console.log(`Failed:         ${results.length - passedCount}`);
   console.log('====================================================\n');
 
+  if (testServer) {
+    try { testServer.close(); } catch (_) {}
+  }
+
   if (passedCount !== results.length) {
     process.exit(1);
+  } else {
+    process.exit(0);
   }
 }
 

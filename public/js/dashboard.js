@@ -18,6 +18,9 @@ const appState = {
   isLinked: false,                // Device link state
   abortController: null,
   activeDeleteConfirmSlug: null,
+  activePauseConfirmSlug: null,
+  redeployTarget: null,
+  redeployRecord: null,
   sortMode: 'newest'
 };
 
@@ -81,6 +84,18 @@ const el = {
   limitsActionNote: document.getElementById('limitsActionNote'),
 
   // Deploy Form & Dropzone
+  tileNewDeployTitle: document.getElementById('tileNewDeployTitle'),
+  tileDeployTagLabel: document.getElementById('tileDeployTagLabel'),
+  redeployModeBanner: document.getElementById('redeployModeBanner'),
+  redeployTargetSlug: document.getElementById('redeployTargetSlug'),
+  cancelRedeployBtn: document.getElementById('cancelRedeployBtn'),
+  urlRenameOptionBlock: document.getElementById('urlRenameOptionBlock'),
+  urlRenameCheckbox: document.getElementById('urlRenameCheckbox'),
+  urlRenameField: document.getElementById('urlRenameField'),
+  newSlugInput: document.getElementById('newSlugInput'),
+  newSlugAvailability: document.getElementById('newSlugAvailability'),
+  randomizeNewSlugBtn: document.getElementById('randomizeNewSlugBtn'),
+
   generatorForm: document.getElementById('generatorForm'),
   dropZone: document.getElementById('dropZone'),
   dropPrompt: document.getElementById('dropPrompt'),
@@ -96,6 +111,7 @@ const el = {
   excludedFilesAlert: document.getElementById('excludedFilesAlert'),
   autoRenameCheckbox: document.getElementById('autoRenameCheckbox'),
 
+  projectNameInput: document.getElementById('projectNameInput'),
   slugInput: document.getElementById('slugInput'),
   prefixInput: document.getElementById('prefixInput'),
   randomizeSlugBtn: document.getElementById('randomizeSlugBtn'),
@@ -144,6 +160,7 @@ const el = {
   linksSortSelect: document.getElementById('linksSortSelect'),
   linksTableBody: document.getElementById('linksTableBody'),
   deploymentsCountBadge: document.getElementById('deploymentsCountBadge'),
+  colHeaderProject: document.getElementById('colHeaderProject'),
   colHeaderName: document.getElementById('colHeaderName'),
   colHeaderStyle: document.getElementById('colHeaderStyle'),
   colHeaderUrl: document.getElementById('colHeaderUrl'),
@@ -164,6 +181,7 @@ const el = {
 
   settingsModal: document.getElementById('settingsModal'),
   settingsDeviceId: document.getElementById('settingsDeviceId'),
+  resetDeviceIdBtn: document.getElementById('resetDeviceIdBtn'),
   closeSettingsModalBtn: document.getElementById('closeSettingsModalBtn'),
   cancelSettingsBtn: document.getElementById('cancelSettingsBtn'),
   saveSettingsBtn: document.getElementById('saveSettingsBtn'),
@@ -173,6 +191,46 @@ const el = {
   settingsApiToken: document.getElementById('settingsApiToken'),
   settingsProjectName: document.getElementById('settingsProjectName'),
   settingsDailyLimit: document.getElementById('settingsDailyLimit'),
+
+  // Cloudflare Connect Wizard (Phase 7)
+  headerConnectWizardBtn: document.getElementById('headerConnectWizardBtn'),
+  openWizardBtn: document.getElementById('openWizardBtn'),
+  wizardModal: document.getElementById('cloudflareConnectWizardModal'),
+  closeWizardModalBtn: document.getElementById('closeWizardModalBtn'),
+  wizardDemoModeBtn: document.getElementById('wizardDemoModeBtn'),
+  wizardStepTag: document.getElementById('wizardStepTag'),
+  progSeg1: document.getElementById('progSeg1'),
+  progSeg2: document.getElementById('progSeg2'),
+  progSeg3: document.getElementById('progSeg3'),
+  wizardStep1: document.getElementById('wizardStep1'),
+  wizardStep2: document.getElementById('wizardStep2'),
+  wizardStep3: document.getElementById('wizardStep3'),
+  wizardSuccessStep: document.getElementById('wizardSuccessStep'),
+  wizardNextToStep2Btn: document.getElementById('wizardNextToStep2Btn'),
+  wizardBackToStep1Btn: document.getElementById('wizardBackToStep1Btn'),
+  wizardNextToStep3Btn: document.getElementById('wizardNextToStep3Btn'),
+  wizardBackToStep2Btn: document.getElementById('wizardBackToStep2Btn'),
+  step1HelpBtn: document.getElementById('step1HelpBtn'),
+  step1HelpDrawer: document.getElementById('step1HelpDrawer'),
+  step2HelpBtn: document.getElementById('step2HelpBtn'),
+  step2HelpDrawer: document.getElementById('step2HelpDrawer'),
+  step3HelpBtn: document.getElementById('step3HelpBtn'),
+  step3HelpDrawer: document.getElementById('step3HelpDrawer'),
+  wizardApiTokenInput: document.getElementById('wizardApiTokenInput'),
+  wizardPasteBtn: document.getElementById('wizardPasteBtn'),
+  wizardAccountSelectGroup: document.getElementById('wizardAccountSelectGroup'),
+  wizardAccountSelect: document.getElementById('wizardAccountSelect'),
+  wizardProjectNameInput: document.getElementById('wizardProjectNameInput'),
+  wizardErrorBanner: document.getElementById('wizardErrorBanner'),
+  wizardErrorText: document.getElementById('wizardErrorText'),
+  wizardSubmitBtn: document.getElementById('wizardSubmitBtn'),
+  wizardSuccessEmail: document.getElementById('wizardSuccessEmail'),
+  wizardSuccessAccount: document.getElementById('wizardSuccessAccount'),
+  wizardFinishBtn: document.getElementById('wizardFinishBtn'),
+  wizardDisconnectBtn: document.getElementById('wizardDisconnectBtn'),
+  cardDeployUpload: document.getElementById('cardDeployUpload'),
+  cardDeployTemplate: document.getElementById('cardDeployTemplate'),
+  cardDeployGithub: document.getElementById('cardDeployGithub'),
 
   toastContainer: document.getElementById('toastContainer')
 };
@@ -195,6 +253,10 @@ async function initDeviceStorage() {
         const data = await res.json();
         if (data.registered) {
           isLinked = true;
+          appState.projectName = data.projectName || '';
+          if (el.projectNameInput && !el.projectNameInput.value) {
+            el.projectNameInput.value = data.projectName || '';
+          }
         }
       }
     } catch (_) {}
@@ -266,12 +328,85 @@ function loadSavedPreferences() {
   }
 }
 
-function apiFetch(url, options = {}) {
-  const headers = options.headers || {};
+async function registerFreshDevice() {
+  try {
+    const regRes = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin'
+    });
+    if (regRes.ok) {
+      const regData = await regRes.json();
+      if (regData.success && regData.deviceId) {
+        localStorage.setItem('cf_device_id', regData.deviceId);
+        appState.deviceId = regData.deviceId;
+        appState.isLinked = true;
+        if (el.unlinkedBanner) el.unlinkedBanner.style.display = 'none';
+        if (el.settingsDeviceId) el.settingsDeviceId.innerText = regData.deviceId;
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('Auto-registering device failed:', err);
+  }
+  return false;
+}
+
+async function fetchWithDevice(url, options = {}, isRetry = false) {
+  // Ensure device is initialized or registered before making authenticated requests
+  if (!appState.deviceId || !appState.isLinked) {
+    const storedId = localStorage.getItem('cf_device_id');
+    if (storedId && /^DEV-[A-Z0-9]{16}$/.test(storedId)) {
+      appState.deviceId = storedId;
+      appState.isLinked = true;
+    } else {
+      await registerFreshDevice();
+    }
+  }
+
+  const headers = Object.assign({}, options.headers || {});
   if (appState.deviceId) {
     headers['X-Device-Id'] = appState.deviceId;
   }
-  return fetch(url, { ...options, headers, credentials: 'same-origin' });
+
+  let res = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+
+  // Self-heal on 401 (e.g. stale device ID or missing/expired cookie)
+  if (res.status === 401 && !isRetry && url !== '/api/auth/register') {
+    console.warn('[AUTH] 401 received from', url, '- re-registering fresh device credentials...');
+    localStorage.removeItem('cf_device_id');
+    appState.deviceId = null;
+    appState.isLinked = false;
+    const registered = await registerFreshDevice();
+    if (registered) {
+      const retryHeaders = Object.assign({}, options.headers || {});
+      if (appState.deviceId) {
+        retryHeaders['X-Device-Id'] = appState.deviceId;
+      }
+      res = await fetch(url, { ...options, headers: retryHeaders, credentials: 'same-origin' });
+    }
+  }
+
+  return res;
+}
+
+function apiFetch(url, options = {}) {
+  return fetchWithDevice(url, options);
+}
+
+async function parseResponseJson(res) {
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      return await res.json();
+    } catch (parseErr) {
+      throw new Error(`Invalid JSON response from server: ${parseErr.message}`);
+    }
+  }
+  const rawText = await res.text();
+  const stripped = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const summary = stripped.slice(0, 100) || res.statusText || 'Unexpected non-JSON response';
+  throw new Error(`Server returned HTTP ${res.status}: ${summary}`);
 }
 
 // ==========================================================================
@@ -351,9 +486,13 @@ function updateSlugPreviews(slug) {
 }
 
 function computeProjectDomain() {
-  return (appState.quota && appState.quota.cloudflare && appState.quota.cloudflare.projectName)
-    ? appState.quota.cloudflare.projectName
-    : 'random-pages-vault';
+  if (el.projectNameInput && el.projectNameInput.value.trim()) {
+    return el.projectNameInput.value.trim();
+  }
+  if (appState.quota && appState.quota.cloudflare && appState.quota.cloudflare.projectName) {
+    return appState.quota.cloudflare.projectName;
+  }
+  return appState.projectName || 'random-pages-vault';
 }
 
 function computeLiveUrl(slug) {
@@ -366,7 +505,10 @@ function computeLiveUrl(slug) {
 }
 
 function updateLiveFinalUrl() {
-  const slug = el.slugInput.value.trim();
+  let slug = el.slugInput.value.trim();
+  if (appState.redeployTarget && el.urlRenameCheckbox && el.urlRenameCheckbox.checked && el.newSlugInput && el.newSlugInput.value.trim()) {
+    slug = el.newSlugInput.value.trim();
+  }
   const url = computeLiveUrl(slug);
   if (el.liveFinalUrl) {
     el.liveFinalUrl.innerText = url;
@@ -377,6 +519,12 @@ function updateLiveFinalUrl() {
 function checkSlugAvailability(rawSlug) {
   const slug = (rawSlug || '').trim().toLowerCase();
   if (!el.slugAvailability) return;
+
+  if (appState.redeployTarget && (!el.urlRenameCheckbox || !el.urlRenameCheckbox.checked)) {
+    el.slugAvailability.innerText = '[Locked] Redeploying existing';
+    el.slugAvailability.className = 'slug-status-indicator available';
+    return;
+  }
 
   if (!slug) {
     el.slugAvailability.innerText = 'Required';
@@ -396,7 +544,7 @@ function checkSlugAvailability(rawSlug) {
     return;
   }
 
-  const exists = appState.deployments.some(d => d.slug && d.slug.toLowerCase() === slug);
+  const exists = appState.deployments.some(d => d.slug && d.slug.toLowerCase() === slug && (!appState.redeployTarget || d.slug.toLowerCase() !== appState.redeployTarget.toLowerCase()));
   if (exists) {
     el.slugAvailability.innerText = '[Taken] Name already deployed';
     el.slugAvailability.className = 'slug-status-indicator taken';
@@ -404,6 +552,38 @@ function checkSlugAvailability(rawSlug) {
     // 7. Available: black text with check mark, no color
     el.slugAvailability.innerText = '[✓] Available';
     el.slugAvailability.className = 'slug-status-indicator available';
+  }
+}
+
+function checkNewSlugAvailability(rawSlug) {
+  const slug = (rawSlug || '').trim().toLowerCase();
+  if (!el.newSlugAvailability) return;
+
+  if (!slug) {
+    el.newSlugAvailability.innerText = 'Required';
+    el.newSlugAvailability.className = 'slug-status-indicator taken';
+    return;
+  }
+
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    el.newSlugAvailability.innerText = 'Invalid format (lowercase, numbers, -)';
+    el.newSlugAvailability.className = 'slug-status-indicator taken';
+    return;
+  }
+
+  if (slug.length < 3) {
+    el.newSlugAvailability.innerText = 'Min 3 characters';
+    el.newSlugAvailability.className = 'slug-status-indicator taken';
+    return;
+  }
+
+  const exists = appState.deployments.some(d => d.slug && d.slug.toLowerCase() === slug && (!appState.redeployTarget || d.slug.toLowerCase() !== appState.redeployTarget.toLowerCase()));
+  if (exists) {
+    el.newSlugAvailability.innerText = '[Taken] Name already deployed';
+    el.newSlugAvailability.className = 'slug-status-indicator taken';
+  } else {
+    el.newSlugAvailability.innerText = '[✓] Available';
+    el.newSlugAvailability.className = 'slug-status-indicator available';
   }
 }
 
@@ -603,6 +783,28 @@ function isClientSensitivePath(filePath) {
 }
 
 async function loadFilesIntoQueue(fileEntries) {
+  // Strip common root folder prefix from all paths.
+  // When a folder is dropped or selected via webkitdirectory, every path includes
+  // the folder name (e.g. "myfolder/index.html", "myfolder/assets/bg.png").
+  // This breaks relative asset references after index.html is promoted to root,
+  // because the assets stay nested under "myfolder/assets/" instead of "assets/".
+  // Detect a shared single-folder root and strip it so the folder's contents
+  // become the deployment root.
+  if (fileEntries.length > 0) {
+    const segments = fileEntries.map(item => {
+      const p = (item.path || '').replace(/\\/g, '/');
+      const slash = p.indexOf('/');
+      return slash > 0 ? p.substring(0, slash) : null;
+    });
+    const commonRoot = segments[0];
+    if (commonRoot && segments.every(s => s === commonRoot)) {
+      const prefixLen = commonRoot.length + 1; // +1 for the trailing slash
+      for (const item of fileEntries) {
+        item.path = item.path.replace(/\\/g, '/').substring(prefixLen);
+      }
+    }
+  }
+
   const binaryExtensions = [
     'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf',
     'zip', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'wasm'
@@ -773,6 +975,14 @@ function validateDeployButtonState() {
     return;
   }
 
+  const project = computeProjectDomain();
+  if (!project || !project.trim()) {
+    el.deployBtn.disabled = true;
+    el.deployBtnText.innerText = 'Configure project name';
+    el.deployReasonText.innerText = 'Project name is mandatory. Please configure a project name in settings before deploying.';
+    return;
+  }
+
   const hasFiles = appState.queuedFiles.length > 0;
   const isQuotaExceeded = appState.quota && appState.quota.daily && (appState.quota.daily.remaining <= 0 || appState.quota.daily.isExceeded);
   const slug = el.slugInput.value.trim();
@@ -809,9 +1019,25 @@ function validateDeployButtonState() {
     return;
   }
 
+  // If in redeploy mode with URL rename option enabled, validate new slug
+  if (appState.redeployTarget && el.urlRenameCheckbox && el.urlRenameCheckbox.checked) {
+    const newSlug = (el.newSlugInput ? el.newSlugInput.value : '').trim().toLowerCase();
+    const isNewValid = newSlug.length >= 3 && /^[a-z0-9-]+$/.test(newSlug);
+    const isCollision = appState.deployments.some(d => d.slug && d.slug.toLowerCase() === newSlug && d.slug.toLowerCase() !== appState.redeployTarget.toLowerCase());
+
+    if (!isNewValid || isCollision) {
+      el.deployBtn.disabled = true;
+      el.deployBtnText.innerText = isCollision ? 'New URL name taken' : 'Enter valid new URL name';
+      el.deployReasonText.innerText = isCollision
+        ? `Site name '${newSlug}' is already deployed. Choose another name.`
+        : 'New URL name must be at least 3 characters (lowercase, numbers, hyphens).';
+      return;
+    }
+  }
+
   // Enabled state: Orange fill, black text, 56px tall
   el.deployBtn.disabled = false;
-  el.deployBtnText.innerText = 'Deploy';
+  el.deployBtnText.innerText = appState.redeployTarget ? 'Redeploy project' : 'Deploy';
 
   const remaining = appState.quota ? appState.quota.daily.remaining : 100;
   if (remaining < 10) {
@@ -828,7 +1054,7 @@ function validateDeployButtonState() {
 async function fetchStatus(syncWithCf = false) {
   try {
     const res = await apiFetch(`/api/status?sync=${syncWithCf}`);
-    const data = await res.json();
+    const data = await parseResponseJson(res);
     if (data.success && data.status) {
       updateStatusUI(data.status);
     }
@@ -923,6 +1149,13 @@ function updateStatusUI(status) {
     el.connectionBadge.style.display = 'none';
   }
 
+  if (status.cloudflare && status.cloudflare.projectName) {
+    appState.projectName = status.cloudflare.projectName;
+    if (el.projectNameInput && !el.projectNameInput.value) {
+      el.projectNameInput.value = status.cloudflare.projectName;
+    }
+  }
+
   validateDeployButtonState();
   updateLiveFinalUrl();
 }
@@ -934,7 +1167,7 @@ function updateStatusUI(status) {
 async function fetchDeployments() {
   try {
     const res = await apiFetch('/api/deployments');
-    const data = await res.json();
+    const data = await parseResponseJson(res);
     if (data.success && data.deployments) {
       appState.deployments = data.deployments;
       renderDeploymentsTable();
@@ -967,9 +1200,14 @@ function updateLastDeploymentTile(invertHeader = false) {
   const displayUrl = latest.url || `https://${latest.slug}.pages.dev`;
   const timeFormatted = formatLocalDate(latest.created_at);
 
-  el.lastDeployTitle.innerText = latest.title || latest.slug;
+  if (latest.status === 'paused') {
+    el.lastDeployTitle.innerText = `${latest.title || latest.slug} [PAUSED]`;
+    el.lastDeployTimeTag.innerText = 'Paused';
+  } else {
+    el.lastDeployTitle.innerText = latest.title || latest.slug;
+    el.lastDeployTimeTag.innerText = timeFormatted.relative || 'Recent';
+  }
   el.lastDeployTime.innerText = `${timeFormatted.primary} (${timeFormatted.relative})`;
-  el.lastDeployTimeTag.innerText = timeFormatted.relative || 'Recent';
 
   el.lastDeployUrlAnchor.href = displayUrl;
   el.lastDeployUrlAnchor.innerText = displayUrl;
@@ -1017,11 +1255,13 @@ function updateYourSitesTile() {
 
 function updateSortHeadersUI() {
   // 10. Active sort column header gets 3px orange underline
-  [el.colHeaderName, el.colHeaderStyle, el.colHeaderUrl, el.colHeaderDate].forEach(th => {
+  [el.colHeaderProject, el.colHeaderName, el.colHeaderStyle, el.colHeaderUrl, el.colHeaderDate].forEach(th => {
     if (th) th.classList.remove('sort-active');
   });
 
-  if (appState.sortMode === 'alpha' && el.colHeaderName) {
+  if (appState.sortMode === 'project' && el.colHeaderProject) {
+    el.colHeaderProject.classList.add('sort-active');
+  } else if (appState.sortMode === 'alpha' && el.colHeaderName) {
     el.colHeaderName.classList.add('sort-active');
   } else if (el.colHeaderDate) {
     el.colHeaderDate.classList.add('sort-active');
@@ -1032,7 +1272,8 @@ function renderDeploymentsTable() {
   const searchTerm = (el.linksSearchInput ? el.linksSearchInput.value : '').trim().toLowerCase();
 
   let items = appState.deployments.filter(d => {
-    return (d.slug && d.slug.toLowerCase().includes(searchTerm)) ||
+    return (d.projectName && d.projectName.toLowerCase().includes(searchTerm)) ||
+           (d.slug && d.slug.toLowerCase().includes(searchTerm)) ||
            (d.title && d.title.toLowerCase().includes(searchTerm)) ||
            (d.url && d.url.toLowerCase().includes(searchTerm));
   });
@@ -1041,6 +1282,8 @@ function renderDeploymentsTable() {
     items.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   } else if (appState.sortMode === 'alpha') {
     items.sort((a, b) => (a.slug || '').localeCompare(b.slug || ''));
+  } else if (appState.sortMode === 'project') {
+    items.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || '') || (a.slug || '').localeCompare(b.slug || ''));
   } else {
     items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
@@ -1057,7 +1300,7 @@ function renderDeploymentsTable() {
       : 'No deployments yet. Drop a folder to create one.';
     el.linksTableBody.innerHTML = `
       <tr>
-        <td colspan="5" class="table-empty-row">
+        <td colspan="6" class="table-empty-row">
           ${msg}
         </td>
       </tr>
@@ -1066,15 +1309,19 @@ function renderDeploymentsTable() {
   }
 
   el.linksTableBody.innerHTML = items.map(item => {
+    const projectName = escapeHtml(item.projectName || 'random-pages-vault');
     const displayUrl = item.url || `https://${item.slug}.pages.dev`;
     const styleLabel = item.mode === 'path' ? 'Path' : 'Subdomain';
     const dateFormatted = formatLocalDate(item.created_at);
     const slug = escapeHtml(item.slug || '');
     const title = item.title && item.title !== 'Instant Edge Static Drop' ? escapeHtml(item.title) : '';
-    const isConfirming = appState.activeDeleteConfirmSlug === item.slug;
+    const isDeleting = appState.activeDeleteConfirmSlug === item.slug;
+    const isPausing = appState.activePauseConfirmSlug === item.slug;
+    const isPaused = item.status === 'paused';
+    const redeployCount = item.redeployCount || 0;
 
     let actionsHtml = '';
-    if (isConfirming) {
+    if (isDeleting) {
       // 10. Delete confirmation: Yes button is orange fill, black text
       actionsHtml = `
         <div class="delete-confirm-box">
@@ -1083,14 +1330,26 @@ function renderDeploymentsTable() {
           <button type="button" class="btn-confirm-no" onclick="cancelDeleteDeployment()">Cancel</button>
         </div>
       `;
+    } else if (isPausing) {
+      actionsHtml = `
+        <div class="delete-confirm-box">
+          <span class="confirm-label">Pause site?</span>
+          <button type="button" class="btn-confirm-yes" onclick="confirmPauseDeployment('${item.slug}')">Yes</button>
+          <button type="button" class="btn-confirm-no" onclick="cancelPauseDeployment()">Cancel</button>
+        </div>
+      `;
     } else {
       actionsHtml = `
         <div class="table-actions-cluster">
-          <button type="button" class="btn-row-action" onclick="copyLink('${displayUrl}')" title="Copy full URL">Copy</button>
-          <button type="button" class="btn-row-action" onclick="openQrModal('${displayUrl}', '${slug}')" title="Show QR code">QR</button>
-          <button type="button" class="btn-row-action" onclick="window.open('${displayUrl}', '_blank')" title="Open live site">Open</button>
-          <div class="action-divider" aria-hidden="true"></div>
-          <button type="button" class="btn-row-action btn-row-del" onclick="promptDeleteDeployment('${item.slug}')" title="Delete record">Delete</button>
+          <button type="button" class="btn-row-action col-third" onclick="window.open('${displayUrl}', '_blank')" title="Open live site">Open</button>
+          <button type="button" class="btn-row-action col-third" onclick="copyLink('${displayUrl}')" title="Copy full URL">Copy</button>
+          <button type="button" class="btn-row-action col-third" onclick="openQrModal('${displayUrl}', '${slug}')" title="Show QR code">QR</button>
+          ${isPaused
+            ? `<button type="button" class="btn-row-action btn-row-resume col-half" onclick="handleResumeDeployment('${item.slug}')" title="Resume live deployment">Resume</button>`
+            : `<button type="button" class="btn-row-action btn-row-pause col-half" onclick="promptPauseDeployment('${item.slug}')" title="Pause deployment">Pause</button>`
+          }
+          <button type="button" class="btn-row-action btn-row-redeploy col-half" onclick="startRedeploy('${item.slug}')" title="Redeploy with updated files">Redeploy</button>
+          <button type="button" class="btn-row-action btn-row-del col-full" onclick="promptDeleteDeployment('${item.slug}')" title="Delete record">Delete</button>
         </div>
       `;
     }
@@ -1098,14 +1357,22 @@ function renderDeploymentsTable() {
     return `
       <tr>
         <td>
-          <div class="table-site-name">${slug}</div>
+          <span class="table-project-badge" title="Project: ${projectName}">${projectName}</span>
+        </td>
+        <td>
+          <div class="table-site-name">
+            ${slug}
+            ${isPaused ? '<span class="paused-badge">[PAUSED]</span>' : ''}
+            ${redeployCount > 0 ? `<span class="redeploy-count-badge" title="Redeployed ${redeployCount} times">v${redeployCount + 1}</span>` : ''}
+          </div>
           ${title ? `<div class="table-site-title">${title}</div>` : ''}
+          ${item.originalSlug ? `<span class="original-slug-text">(renamed from: ${escapeHtml(item.originalSlug)})</span>` : ''}
         </td>
         <td>
           <span class="table-style-badge">${styleLabel}</span>
         </td>
         <td>
-          <a href="${displayUrl}" target="_blank" rel="noopener noreferrer" class="table-url-link" title="Open ${displayUrl}">
+          <a href="${displayUrl}" target="_blank" rel="noopener noreferrer" class="table-url-link ${isPaused ? 'paused' : ''}" title="Open ${displayUrl}">
             ${displayUrl}
           </a>
         </td>
@@ -1125,6 +1392,7 @@ function renderDeploymentsTable() {
 
 function promptDeleteDeployment(slug) {
   appState.activeDeleteConfirmSlug = slug;
+  appState.activePauseConfirmSlug = null;
   renderDeploymentsTable();
 }
 
@@ -1145,6 +1413,139 @@ async function confirmDeleteDeployment(slug) {
   }
 }
 
+// Pause and Resume Actions
+function promptPauseDeployment(slug) {
+  appState.activePauseConfirmSlug = slug;
+  appState.activeDeleteConfirmSlug = null;
+  renderDeploymentsTable();
+}
+
+function cancelPauseDeployment() {
+  appState.activePauseConfirmSlug = null;
+  renderDeploymentsTable();
+}
+
+async function confirmPauseDeployment(slug) {
+  try {
+    showToast(`Pausing deployment "${slug}"...`);
+    const res = await apiFetch(`/api/deployments/${encodeURIComponent(slug)}/pause`, { method: 'POST' });
+    const data = await parseResponseJson(res);
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to pause deployment');
+    }
+    appState.activePauseConfirmSlug = null;
+    showToast(`Site "${slug}" is now paused.`);
+    await fetchDeployments();
+    if (data.quota) updateStatusUI(data.quota);
+  } catch (err) {
+    showToast(`Pause failed: ${err.message}`, 'error');
+  }
+}
+
+async function handleResumeDeployment(slug) {
+  try {
+    showToast(`Resuming deployment "${slug}"...`);
+    const res = await apiFetch(`/api/deployments/${encodeURIComponent(slug)}/resume`, { method: 'POST' });
+    const data = await parseResponseJson(res);
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to resume deployment');
+    }
+    showToast(`Site "${slug}" is now live and resumed.`);
+    await fetchDeployments();
+    if (data.quota) updateStatusUI(data.quota);
+  } catch (err) {
+    showToast(`Resume failed: ${err.message}`, 'error');
+  }
+}
+
+// Redeploy Management Actions
+function startRedeploy(slug) {
+  const item = appState.deployments.find(d => d.slug === slug);
+  if (!item) return;
+
+  appState.redeployTarget = slug;
+  appState.redeployRecord = item;
+
+  // Lock site name to existing slug
+  el.slugInput.value = slug;
+  el.slugInput.readOnly = true;
+  el.slugInput.classList.add('locked');
+  if (el.randomizeSlugBtn) el.randomizeSlugBtn.style.display = 'none';
+
+  if (el.pageTitleInput && item.title) {
+    el.pageTitleInput.value = item.title;
+  }
+
+  if (el.projectNameInput && item.projectName) {
+    el.projectNameInput.value = item.projectName;
+  }
+
+  // Set mode to match deployment mode
+  if (item.mode === 'path') {
+    appState.activeMode = 'path';
+    el.modePathOption.classList.add('selected');
+    el.modeBranchOption.classList.remove('selected');
+    el.modePathOption.querySelector('.arch-radio-mark').innerText = '[✓]';
+    el.modeBranchOption.querySelector('.arch-radio-mark').innerText = '[ ]';
+    el.modePathOption.querySelector('input').checked = true;
+  } else {
+    appState.activeMode = 'branch';
+    el.modeBranchOption.classList.add('selected');
+    el.modePathOption.classList.remove('selected');
+    el.modeBranchOption.querySelector('.arch-radio-mark').innerText = '[✓]';
+    el.modePathOption.querySelector('.arch-radio-mark').innerText = '[ ]';
+    el.modeBranchOption.querySelector('input').checked = true;
+  }
+
+  // Show banner & options
+  el.redeployTargetSlug.innerText = slug;
+  el.redeployModeBanner.style.display = 'flex';
+  el.tileNewDeployTitle.innerText = 'REDEPLOY PROJECT';
+  el.tileDeployTagLabel.innerText = 'Update site';
+
+  el.urlRenameOptionBlock.style.display = 'block';
+  el.urlRenameCheckbox.checked = false;
+  el.urlRenameField.style.display = 'none';
+  el.newSlugInput.value = '';
+
+  updateSlugPreviews(slug);
+  checkSlugAvailability(slug);
+  updateLiveFinalUrl();
+  validateDeployButtonState();
+
+  if (el.tileNewDeploy) {
+    el.tileNewDeploy.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  showToast(`Redeploy mode active for "${slug}". Drop updated files to redeploy.`);
+}
+
+function exitRedeployMode() {
+  appState.redeployTarget = null;
+  appState.redeployRecord = null;
+
+  el.slugInput.readOnly = false;
+  el.slugInput.classList.remove('locked');
+  if (el.randomizeSlugBtn) el.randomizeSlugBtn.style.display = 'inline-flex';
+
+  el.redeployModeBanner.style.display = 'none';
+  el.tileNewDeployTitle.innerText = 'NEW DEPLOYMENT';
+  el.tileDeployTagLabel.innerText = 'Primary task';
+
+  el.urlRenameOptionBlock.style.display = 'none';
+  el.urlRenameCheckbox.checked = false;
+  el.urlRenameField.style.display = 'none';
+  el.newSlugInput.value = '';
+
+  if (el.projectNameInput) {
+    el.projectNameInput.value = appState.projectName || 'random-pages-vault';
+  }
+
+  generateNewSlug();
+  validateDeployButtonState();
+  showToast('Exited redeploy mode.');
+}
+
 window.copyLink = function(url) {
   navigator.clipboard.writeText(url);
   showToast('Link copied to clipboard');
@@ -1153,6 +1554,12 @@ window.copyLink = function(url) {
 window.promptDeleteDeployment = promptDeleteDeployment;
 window.cancelDeleteDeployment = cancelDeleteDeployment;
 window.confirmDeleteDeployment = confirmDeleteDeployment;
+window.promptPauseDeployment = promptPauseDeployment;
+window.cancelPauseDeployment = cancelPauseDeployment;
+window.confirmPauseDeployment = confirmPauseDeployment;
+window.handleResumeDeployment = handleResumeDeployment;
+window.startRedeploy = startRedeploy;
+window.exitRedeployMode = exitRedeployMode;
 
 // ==========================================================================
 // 10. Deploy Execution & Wrangler Stream (Rule 9)
@@ -1165,12 +1572,25 @@ async function handleDeploySubmit(e) {
   const title = el.pageTitleInput.value.trim();
   const subtitle = el.pageSubtitleInput.value.trim();
   const content = el.pageContentInput.value.trim();
-  const prefix = el.prefixInput.value.trim();
+  const prefix = el.prefixInput ? el.prefixInput.value.trim() : '';
   const mode = appState.activeMode;
   const files = appState.queuedFiles;
 
   if (files.length === 0) {
     showToast('Please select or drop files to deploy', 'error');
+    return;
+  }
+
+  const isRedeploy = Boolean(appState.redeployTarget);
+  const targetRedeploySlug = appState.redeployTarget;
+  const isUrlRename = isRedeploy && el.urlRenameCheckbox && el.urlRenameCheckbox.checked;
+  const newSlug = isUrlRename ? (el.newSlugInput ? el.newSlugInput.value.trim().toLowerCase() : '') : null;
+  const effectiveSlug = isUrlRename ? newSlug : slug;
+  const projectName = el.projectNameInput ? el.projectNameInput.value.trim() : '';
+
+  if (!projectName) {
+    showToast('Project name is mandatory and cannot be empty.', 'error');
+    if (el.projectNameInput) el.projectNameInput.focus();
     return;
   }
 
@@ -1192,7 +1612,9 @@ async function handleDeploySubmit(e) {
     el.cliErrorBanner.style.display = 'none';
   }
 
-  el.terminalOutput.innerText = `[INIT] Starting direct deployment for slug: ${slug}...\n[INIT] Mode: ${mode} | Queued: ${files.length} files\n`;
+  el.terminalOutput.innerText = isRedeploy
+    ? `[INIT] Starting redeployment for: ${targetRedeploySlug}${isUrlRename ? ' -> ' + newSlug : ''}...\n[INIT] Mode: ${mode} | Queued: ${files.length} files\n`
+    : `[INIT] Starting direct deployment for slug: ${slug}...\n[INIT] Mode: ${mode} | Queued: ${files.length} files\n`;
 
   const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
 
@@ -1204,27 +1626,44 @@ async function handleDeploySubmit(e) {
       }
     }, 600);
 
-    const res = await apiFetch('/api/deployments/generate', {
+    const deployEndpoint = isRedeploy
+      ? `/api/deployments/${encodeURIComponent(targetRedeploySlug)}/redeploy`
+      : '/api/deployments/generate';
+
+    const payload = isRedeploy ? {
+      requestId,
+      projectName,
+      newSlug,
+      title,
+      subtitle,
+      content,
+      mode,
+      files,
+      autoRenameIndex: appState.autoRenameIndex
+    } : {
+      requestId,
+      projectName,
+      customSlug: slug,
+      title,
+      subtitle,
+      content,
+      prefix,
+      mode,
+      files,
+      autoRenameIndex: appState.autoRenameIndex
+    };
+
+    const res = await apiFetch(deployEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Request-Id': requestId
       },
       signal: appState.abortController.signal,
-      body: JSON.stringify({
-        requestId,
-        customSlug: slug,
-        title,
-        subtitle,
-        content,
-        prefix,
-        mode,
-        files,
-        autoRenameIndex: appState.autoRenameIndex
-      })
+      body: JSON.stringify(payload)
     });
 
-    const data = await res.json();
+    const data = await parseResponseJson(res);
 
     if (!res.ok || !data.success) {
       throw new Error(data.error || 'Cloudflare deployment failed');
@@ -1243,7 +1682,7 @@ async function handleDeploySubmit(e) {
       el.cliStatusTag.innerText = 'Success';
     }
 
-    showSuccessBlock(data.url, slug);
+    showSuccessBlock(data.url, data.slug || effectiveSlug);
 
     if (data.quota) updateStatusUI(data.quota);
     await fetchDeployments();
@@ -1252,7 +1691,11 @@ async function handleDeploySubmit(e) {
     updateLastDeploymentTile(true);
 
     clearQueuedFiles();
-    generateNewSlug();
+    if (isRedeploy) {
+      exitRedeployMode();
+    } else {
+      generateNewSlug();
+    }
 
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -1350,6 +1793,48 @@ function showErrorBlock(rawMessage) {
 function bindEvents() {
   el.randomizeSlugBtn.addEventListener('click', generateNewSlug);
 
+  if (el.cancelRedeployBtn) {
+    el.cancelRedeployBtn.addEventListener('click', exitRedeployMode);
+  }
+
+  if (el.urlRenameCheckbox) {
+    el.urlRenameCheckbox.addEventListener('change', (e) => {
+      const isChecked = e.target.checked;
+      if (el.urlRenameField) {
+        el.urlRenameField.style.display = isChecked ? 'block' : 'none';
+      }
+      if (isChecked && (!el.newSlugInput.value || el.newSlugInput.value.trim() === '')) {
+        const rand = Math.random().toString(36).slice(2, 9);
+        el.newSlugInput.value = `${appState.redeployTarget || 'site'}-${rand}`;
+        checkNewSlugAvailability(el.newSlugInput.value);
+      }
+      updateLiveFinalUrl();
+      validateDeployButtonState();
+    });
+  }
+
+  if (el.newSlugInput) {
+    el.newSlugInput.addEventListener('input', (e) => {
+      checkNewSlugAvailability(e.target.value);
+      updateLiveFinalUrl();
+      validateDeployButtonState();
+    });
+  }
+
+  if (el.randomizeNewSlugBtn) {
+    el.randomizeNewSlugBtn.addEventListener('click', () => {
+      const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+      let rand = '';
+      for (let i = 0; i < 7; i++) {
+        rand += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      el.newSlugInput.value = rand;
+      checkNewSlugAvailability(rand);
+      updateLiveFinalUrl();
+      validateDeployButtonState();
+    });
+  }
+
   el.slugInput.addEventListener('input', (e) => {
     const slug = e.target.value;
     updateSlugPreviews(slug);
@@ -1357,6 +1842,18 @@ function bindEvents() {
     updateLiveFinalUrl();
     validateDeployButtonState();
   });
+
+  if (el.projectNameInput) {
+    el.projectNameInput.addEventListener('input', (e) => {
+      const raw = e.target.value;
+      const formatted = raw.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      if (raw !== formatted) {
+        e.target.value = formatted;
+      }
+      updateLiveFinalUrl();
+      validateDeployButtonState();
+    });
+  }
 
   if (el.prefixInput) {
     el.prefixInput.addEventListener('input', generateNewSlug);
@@ -1446,6 +1943,28 @@ function bindEvents() {
     renderDeploymentsTable();
   });
 
+  if (el.colHeaderProject) {
+    el.colHeaderProject.addEventListener('click', () => {
+      appState.sortMode = appState.sortMode === 'project' ? 'newest' : 'project';
+      if (el.linksSortSelect) el.linksSortSelect.value = appState.sortMode;
+      renderDeploymentsTable();
+    });
+  }
+  if (el.colHeaderName) {
+    el.colHeaderName.addEventListener('click', () => {
+      appState.sortMode = appState.sortMode === 'alpha' ? 'newest' : 'alpha';
+      if (el.linksSortSelect) el.linksSortSelect.value = appState.sortMode;
+      renderDeploymentsTable();
+    });
+  }
+  if (el.colHeaderDate) {
+    el.colHeaderDate.addEventListener('click', () => {
+      appState.sortMode = appState.sortMode === 'oldest' ? 'newest' : 'oldest';
+      if (el.linksSortSelect) el.linksSortSelect.value = appState.sortMode;
+      renderDeploymentsTable();
+    });
+  }
+
   el.closeQrModalBtn.addEventListener('click', () => el.qrModal.style.display = 'none');
   el.copyQrUrlBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(appState.currentModalQrUrl);
@@ -1461,6 +1980,27 @@ function bindEvents() {
   el.cancelSettingsBtn.addEventListener('click', () => el.settingsModal.style.display = 'none');
   el.saveSettingsBtn.addEventListener('click', saveSettings);
   el.testTokenBtn.addEventListener('click', testToken);
+
+  // Cloudflare Connect Wizard bindings
+  if (el.headerConnectWizardBtn) el.headerConnectWizardBtn.addEventListener('click', openWizardModal);
+  if (el.openWizardBtn) el.openWizardBtn.addEventListener('click', openWizardModal);
+  if (el.closeWizardModalBtn) el.closeWizardModalBtn.addEventListener('click', closeWizardModal);
+  if (el.wizardDemoModeBtn) el.wizardDemoModeBtn.addEventListener('click', handleWizardDemoMode);
+  if (el.wizardNextToStep2Btn) el.wizardNextToStep2Btn.addEventListener('click', () => goToWizardStep(2));
+  if (el.wizardBackToStep1Btn) el.wizardBackToStep1Btn.addEventListener('click', () => goToWizardStep(1));
+  if (el.wizardNextToStep3Btn) el.wizardNextToStep3Btn.addEventListener('click', () => goToWizardStep(3));
+  if (el.wizardBackToStep2Btn) el.wizardBackToStep2Btn.addEventListener('click', () => goToWizardStep(2));
+  if (el.step1HelpBtn) el.step1HelpBtn.addEventListener('click', () => toggleWizardHelp(el.step1HelpDrawer));
+  if (el.step2HelpBtn) el.step2HelpBtn.addEventListener('click', () => toggleWizardHelp(el.step2HelpDrawer));
+  if (el.step3HelpBtn) el.step3HelpBtn.addEventListener('click', () => toggleWizardHelp(el.step3HelpDrawer));
+  if (el.wizardPasteBtn) el.wizardPasteBtn.addEventListener('click', handleWizardPaste);
+  if (el.wizardSubmitBtn) el.wizardSubmitBtn.addEventListener('click', handleWizardConnect);
+  if (el.wizardFinishBtn) el.wizardFinishBtn.addEventListener('click', closeWizardModal);
+  if (el.wizardDisconnectBtn) el.wizardDisconnectBtn.addEventListener('click', handleWizardDisconnect);
+  if (el.cardDeployUpload) el.cardDeployUpload.addEventListener('click', () => handleFirstDeployOption('upload'));
+  if (el.cardDeployTemplate) el.cardDeployTemplate.addEventListener('click', () => handleFirstDeployOption('template'));
+  if (el.cardDeployGithub) el.cardDeployGithub.addEventListener('click', () => handleFirstDeployOption('github'));
+  if (el.resetDeviceIdBtn) el.resetDeviceIdBtn.addEventListener('click', handleResetDeviceCredentials);
 }
 
 // ==========================================================================
@@ -1555,6 +2095,36 @@ function openSettings() {
   el.settingsModal.style.display = 'flex';
 }
 
+async function handleResetDeviceCredentials() {
+  if (!confirm('This will unlink this browser, clear stored credentials, and generate a new Device ID. Continue?')) {
+    return;
+  }
+
+  try {
+    await fetch('/api/auth/reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-Id': appState.deviceId || ''
+      },
+      credentials: 'same-origin'
+    });
+
+    localStorage.removeItem('cf_device_id');
+    appState.deviceId = null;
+    appState.isLinked = false;
+
+    // Immediately request new device credentials
+    await handleRelinkDevice();
+    showToast(`Device reset complete! New ID: ${appState.deviceId}`);
+    if (el.settingsDeviceId) el.settingsDeviceId.innerText = appState.deviceId;
+    fetchStatus(true);
+    fetchDeployments();
+  } catch (err) {
+    showToast(`Error resetting device: ${err.message}`, 'error');
+  }
+}
+
 async function testToken() {
   const typedToken = el.settingsApiToken.value.trim();
   const typedAccountId = el.settingsAccountId.value.trim();
@@ -1597,8 +2167,14 @@ async function testToken() {
 async function saveSettings() {
   const accountId = el.settingsAccountId.value.trim();
   const apiToken = el.settingsApiToken.value.trim();
-  const projectName = el.settingsProjectName.value.trim() || 'random-pages-vault';
+  const projectName = el.settingsProjectName.value.trim();
   const dailyFreeLimit = parseInt(el.settingsDailyLimit.value, 10) || 100;
+
+  if (!projectName) {
+    showToast('Project name is mandatory and cannot be empty.', 'error');
+    el.settingsProjectName.focus();
+    return;
+  }
 
   // Clean any legacy plaintext credentials from localStorage
   try {
@@ -1616,12 +2192,15 @@ async function saveSettings() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accountId, apiToken, projectName, dailyFreeLimit })
     });
-    const data = await res.json();
+    const data = await parseResponseJson(res);
     if (data.success) {
+      appState.projectName = data.projectName;
       showToast('Settings saved to secure server storage');
       el.settingsApiToken.value = ''; // Do not keep token in DOM input
       el.settingsModal.style.display = 'none';
       fetchStatus(true);
+      fetchDeployments();
+      validateDeployButtonState();
     } else {
       showToast(`Config error: ${data.error}`, 'error');
     }
@@ -1669,4 +2248,296 @@ function formatLocalDate(isoString) {
   const primary = isToday ? `Today, ${timeStr}` : `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
 
   return { primary, relative };
+}
+
+// ==========================================================================
+// 14. Cloudflare Connect Wizard (Phase 7)
+// ==========================================================================
+
+let wizardCurrentStep = 1;
+
+async function openWizardModal() {
+  if (el.settingsModal) el.settingsModal.style.display = 'none';
+  if (!el.wizardModal) return;
+
+  el.wizardModal.style.display = 'flex';
+
+  try {
+    const res = await fetchWithDevice('/api/cloudflare/status');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.connected) {
+        appState.hasCredentials = true;
+        if (el.wizardSuccessEmail) el.wizardSuccessEmail.innerText = data.email || 'Cloudflare User';
+        if (el.wizardSuccessAccount) el.wizardSuccessAccount.innerText = data.accountName || 'Connected Account';
+        goToWizardStep('success');
+        return;
+      }
+    }
+  } catch (_) {}
+
+  // Check if already connected via state or default to step 1
+  if (appState.hasCredentials) {
+    goToWizardStep('success');
+  } else {
+    goToWizardStep(1);
+  }
+}
+
+function closeWizardModal() {
+  if (el.wizardModal) el.wizardModal.style.display = 'none';
+}
+
+function goToWizardStep(step) {
+  wizardCurrentStep = step;
+
+  // Hide all step panels
+  if (el.wizardStep1) el.wizardStep1.style.display = 'none';
+  if (el.wizardStep2) el.wizardStep2.style.display = 'none';
+  if (el.wizardStep3) el.wizardStep3.style.display = 'none';
+  if (el.wizardSuccessStep) el.wizardSuccessStep.style.display = 'none';
+
+  // Reset progress bar segments
+  if (el.progSeg1) el.progSeg1.className = 'wizard-progress-segment';
+  if (el.progSeg2) el.progSeg2.className = 'wizard-progress-segment';
+  if (el.progSeg3) el.progSeg3.className = 'wizard-progress-segment';
+
+  if (step === 1) {
+    if (el.wizardStep1) el.wizardStep1.style.display = 'block';
+    if (el.wizardStepTag) el.wizardStepTag.innerText = 'Step 1 of 3';
+    if (el.progSeg1) el.progSeg1.className = 'wizard-progress-segment active';
+  } else if (step === 2) {
+    if (el.wizardStep2) el.wizardStep2.style.display = 'block';
+    if (el.wizardStepTag) el.wizardStepTag.innerText = 'Step 2 of 3';
+    if (el.progSeg1) el.progSeg1.className = 'wizard-progress-segment completed';
+    if (el.progSeg2) el.progSeg2.className = 'wizard-progress-segment active';
+  } else if (step === 3) {
+    if (el.wizardStep3) el.wizardStep3.style.display = 'block';
+    if (el.wizardStepTag) el.wizardStepTag.innerText = 'Step 3 of 3';
+    if (el.progSeg1) el.progSeg1.className = 'wizard-progress-segment completed';
+    if (el.progSeg2) el.progSeg2.className = 'wizard-progress-segment completed';
+    if (el.progSeg3) el.progSeg3.className = 'wizard-progress-segment active';
+    if (el.wizardErrorBanner) el.wizardErrorBanner.style.display = 'none';
+    if (el.wizardApiTokenInput) el.wizardApiTokenInput.focus();
+  } else if (step === 'success') {
+    if (el.wizardSuccessStep) el.wizardSuccessStep.style.display = 'block';
+    if (el.wizardStepTag) el.wizardStepTag.innerText = 'Connected ✔';
+    if (el.progSeg1) el.progSeg1.className = 'wizard-progress-segment completed';
+    if (el.progSeg2) el.progSeg2.className = 'wizard-progress-segment completed';
+    if (el.progSeg3) el.progSeg3.className = 'wizard-progress-segment completed active';
+  }
+}
+
+function toggleWizardHelp(drawer) {
+  if (!drawer) return;
+  const isHidden = drawer.style.display === 'none' || !drawer.style.display;
+  drawer.style.display = isHidden ? 'block' : 'none';
+}
+
+async function handleWizardPaste() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text && el.wizardApiTokenInput) {
+      el.wizardApiTokenInput.value = text.trim();
+      if (el.wizardErrorBanner) el.wizardErrorBanner.style.display = 'none';
+      showToast('Token pasted from clipboard');
+    }
+  } catch (err) {
+    showToast('Clipboard permission needed. Please paste manually.', 'error');
+  }
+}
+
+async function handleWizardConnect() {
+  const token = el.wizardApiTokenInput ? el.wizardApiTokenInput.value.trim() : '';
+  const projectName = el.wizardProjectNameInput ? el.wizardProjectNameInput.value.trim() : 'random-pages-vault';
+  const selectedAccountId = (el.wizardAccountSelect && el.wizardAccountSelectGroup && el.wizardAccountSelectGroup.style.display !== 'none')
+    ? el.wizardAccountSelect.value
+    : null;
+
+  if (!token) {
+    showWizardError('Paste your token first.');
+    if (el.wizardApiTokenInput) el.wizardApiTokenInput.focus();
+    return;
+  }
+
+  // Set loading state
+  if (el.wizardSubmitBtn) {
+    el.wizardSubmitBtn.disabled = true;
+    el.wizardSubmitBtn.innerText = 'Connecting to Cloudflare...';
+  }
+  if (el.wizardErrorBanner) el.wizardErrorBanner.style.display = 'none';
+
+  try {
+    const res = await fetchWithDevice('/api/cloudflare/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiToken: token,
+        accountId: selectedAccountId,
+        projectName
+      })
+    });
+
+    const data = await parseResponseJson(res);
+
+    if (data.needsAccountSelection && Array.isArray(data.accounts)) {
+      // Multiple accounts found, show dropdown for selection
+      if (el.wizardAccountSelect && el.wizardAccountSelectGroup) {
+        el.wizardAccountSelect.innerHTML = data.accounts.map(a =>
+          `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} (${escapeHtml(a.id.slice(0, 8))}...)</option>`
+        ).join('');
+        el.wizardAccountSelectGroup.style.display = 'block';
+      }
+      if (el.wizardSubmitBtn) {
+        el.wizardSubmitBtn.disabled = false;
+        el.wizardSubmitBtn.innerText = 'Connect selected account ⚡';
+      }
+      showToast('Select which account to use, then click Connect');
+      return;
+    }
+
+    if (!data.success) {
+      showWizardError(data.error || 'Connection failed.');
+      if (el.wizardSubmitBtn) {
+        el.wizardSubmitBtn.disabled = false;
+        el.wizardSubmitBtn.innerText = 'Test and Connect ⚡';
+      }
+      return;
+    }
+
+    // Success!
+    appState.hasCredentials = true;
+    appState.projectName = data.projectName;
+    if (el.projectNameInput) el.projectNameInput.value = data.projectName;
+
+    if (el.wizardSuccessEmail) el.wizardSuccessEmail.innerText = data.email || 'Cloudflare User';
+    if (el.wizardSuccessAccount) el.wizardSuccessAccount.innerText = data.accountName || 'Primary Account';
+
+    if (el.wizardApiTokenInput) el.wizardApiTokenInput.value = ''; // Never leave token in DOM
+
+    goToWizardStep('success');
+    showToast('Connected to Cloudflare Pages successfully!');
+
+    fetchStatus(true);
+    fetchDeployments();
+    validateDeployButtonState();
+
+  } catch (err) {
+    showWizardError(err.message || 'Cloudflare is not responding. Try again in a minute.');
+  } finally {
+    if (el.wizardSubmitBtn) {
+      el.wizardSubmitBtn.disabled = false;
+      if (wizardCurrentStep !== 'success') {
+        el.wizardSubmitBtn.innerText = 'Test and Connect ⚡';
+      }
+    }
+  }
+}
+
+function showWizardError(msg) {
+  if (!el.wizardErrorBanner || !el.wizardErrorText) return;
+  el.wizardErrorText.innerHTML = escapeHtml(msg);
+
+  // If error message includes advice to fix permissions, make link clickable
+  if (msg.includes('Click here to fix it')) {
+    el.wizardErrorText.innerHTML = escapeHtml(msg).replace(
+      'Click here to fix it',
+      '<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer">Click here to fix it</a>'
+    );
+  }
+
+  el.wizardErrorBanner.style.display = 'block';
+}
+
+async function handleWizardDisconnect() {
+  if (!confirm('Are you sure you want to disconnect this Cloudflare account?')) {
+    return;
+  }
+
+  try {
+    const res = await fetchWithDevice('/api/cloudflare/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await parseResponseJson(res);
+    if (data.success) {
+      appState.hasCredentials = false;
+      showToast('Cloudflare account disconnected');
+      goToWizardStep(1);
+      fetchStatus(true);
+      fetchDeployments();
+      validateDeployButtonState();
+    }
+  } catch (err) {
+    showToast(`Disconnect error: ${err.message}`, 'error');
+  }
+}
+
+function handleWizardDemoMode() {
+  appState.isDemoMode = true;
+  closeWizardModal();
+  showToast('Demo Mode active: Explore with simulation deployments.');
+
+  // If ledger is empty, populate sample demo projects
+  if (!appState.cachedDeployments || appState.cachedDeployments.length === 0) {
+    appState.cachedDeployments = [
+      {
+        slug: 'demo-vite-react',
+        projectName: 'demo-project',
+        title: 'Vite + React Static App',
+        mode: 'branch',
+        url: 'https://demo-vite-react.demo-project.pages.dev',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        redeployCount: 0
+      },
+      {
+        slug: 'demo-astro-blog',
+        projectName: 'demo-project',
+        title: 'Astro Content Driven Blog',
+        mode: 'branch',
+        url: 'https://demo-astro-blog.demo-project.pages.dev',
+        status: 'active',
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+        redeployCount: 1
+      },
+      {
+        slug: 'demo-portfolio',
+        projectName: 'demo-project',
+        title: 'Minimalist Portfolio Landing',
+        mode: 'path',
+        url: 'https://demo-project.pages.dev/r/demo-portfolio',
+        status: 'active',
+        createdAt: new Date(Date.now() - 86400000).toISOString(),
+        redeployCount: 0
+      }
+    ];
+    renderDeploymentsTable();
+  }
+
+  const tile = document.getElementById('tileNewDeploy');
+  if (tile) tile.scrollIntoView({ behavior: 'smooth' });
+}
+
+function handleFirstDeployOption(type) {
+  closeWizardModal();
+  if (type === 'upload') {
+    const tile = document.getElementById('tileNewDeploy');
+    if (tile) tile.scrollIntoView({ behavior: 'smooth' });
+    if (el.dropZone) {
+      el.dropZone.focus();
+      el.dropZone.style.borderColor = 'var(--accent)';
+      setTimeout(() => { if (el.dropZone) el.dropZone.style.borderColor = ''; }, 1500);
+    }
+  } else if (type === 'template') {
+    if (el.slugInput) el.slugInput.value = 'my-first-site';
+    if (el.pageTitleInput) el.pageTitleInput.value = 'Welcome to my first site';
+    updateLiveFinalUrl();
+    validateDeployButtonState();
+    const tile = document.getElementById('tileNewDeploy');
+    if (tile) tile.scrollIntoView({ behavior: 'smooth' });
+    showToast('Template populated! Click Deploy to launch.');
+  } else if (type === 'github') {
+    window.open('https://developers.cloudflare.com/pages/get-started/git-integration/', '_blank', 'noopener,noreferrer');
+  }
 }

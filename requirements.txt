@@ -1,0 +1,15 @@
+# Cloudflare Pages Direct Deployment Tool - Dependency Requirements
+# Auto-checked and installed on npm start if missing.
+
+# Core Server & API Dependencies
+express>=5.0.0
+cors>=2.8.5
+dotenv>=16.0.0
+qrcode>=1.5.0
+
+# Deployment & Edge CLI Tooling
+wrangler>=3.0.0
+
+# Testing, Optical Decodability & E2E Browser Verification
+jsqr>=1.4.0
+playwright>=1.40.0

@@ -23,6 +23,9 @@
         <span id="connectionBadge" class="connection-badge" style="display: none;" role="alert">
           [!] Cloudflare offline
         </span>
+        <button type="button" id="headerConnectWizardBtn" class="btn-raw btn-sm" style="background: var(--accent); color: #000; font-weight: 700;" title="Connect your Cloudflare account in under 2 minutes">
+          ⚡ Connect Wizard
+        </button>
         <button type="button" id="syncStatusBtn" class="btn-raw btn-sm" title="Refresh live telemetry from Cloudflare">
           Refresh status
         </button>
@@ -51,7 +54,16 @@
         <article class="bento-tile tile-new-deploy" id="tileNewDeploy" role="region" aria-labelledby="tileNewDeployTitle">
           <div class="tile-bar">
             <h2 id="tileNewDeployTitle" class="tile-bar-title">NEW DEPLOYMENT</h2>
-            <span class="tile-tag-label">Primary task</span>
+            <span class="tile-tag-label" id="tileDeployTagLabel">Primary task</span>
+          </div>
+
+          <!-- Redeploy Mode Banner -->
+          <div id="redeployModeBanner" class="redeploy-mode-banner" style="display: none;">
+            <div class="redeploy-banner-content">
+              <span class="redeploy-badge">[REDEPLOY MODE]</span>
+              <span class="redeploy-target-text">Updating project: <strong id="redeployTargetSlug">--</strong></span>
+            </div>
+            <button type="button" id="cancelRedeployBtn" class="btn-raw btn-sm" title="Exit redeploy mode and return to new deployment">Cancel</button>
           </div>
 
           <form id="generatorForm" class="deploy-form" novalidate>
@@ -114,6 +126,18 @@
               </div>
             </div>
 
+            <!-- PROJECT NAME (MANDATORY) -->
+            <div class="field-group">
+              <div class="field-header">
+                <label for="projectNameInput" class="field-label">Project name <span class="required-mark" aria-hidden="true">*</span></label>
+                <span class="field-caption">Mandatory</span>
+              </div>
+              <input type="text" id="projectNameInput" class="raw-input" placeholder="e.g. random-pages-vault" required aria-describedby="projectHelpText">
+              <p class="field-helper-text" id="projectHelpText">
+                Cloudflare Pages project name this deployment belongs to. Lowercase letters, numbers, and hyphens only.
+              </p>
+            </div>
+
             <!-- SITE NAME -->
             <div class="field-group">
               <div class="field-header">
@@ -130,6 +154,27 @@
               <p class="field-helper-text" id="slugHelpText">
                 Used in your live site URL. Lowercase letters, numbers, and hyphens only.
               </p>
+
+              <!-- Optional URL Rename on Redeployment (visible only in redeploy mode) -->
+              <div id="urlRenameOptionBlock" class="url-rename-block" style="display: none;">
+                <label class="checkbox-row" for="urlRenameCheckbox">
+                  <input type="checkbox" id="urlRenameCheckbox">
+                  <span class="checkbox-text">Change live URL address (rename site)</span>
+                </label>
+                <div id="urlRenameField" style="display: none; margin-top: 10px;">
+                  <div class="field-header">
+                    <label for="newSlugInput" class="field-label">New URL name</label>
+                    <div id="newSlugAvailability" class="slug-status-indicator" aria-live="polite">Enter name...</div>
+                  </div>
+                  <div class="input-action-group">
+                    <input type="text" id="newSlugInput" class="raw-input" placeholder="e.g. updated-portfolio">
+                    <button type="button" id="randomizeNewSlugBtn" class="btn-raw btn-addon" title="Generate random new name">Random</button>
+                  </div>
+                  <p class="field-helper-text">
+                    The original address will automatically serve a fast redirect page pointing to this new URL.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <!-- URL STYLE -->
@@ -419,6 +464,7 @@
           <select id="linksSortSelect" class="raw-select">
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
+            <option value="project">Project name (A–Z)</option>
             <option value="alpha">Site name (A–Z)</option>
           </select>
         </div>
@@ -429,17 +475,18 @@
         <table class="raw-table" aria-label="List of active deployments">
           <thead>
             <tr>
-              <!-- 10. DEPLOYMENTS TABLE: Active sort header gets 3px orange underline -->
-              <th scope="col" id="colHeaderName" class="sort-active" style="width: 26%;">Site name</th>
-              <th scope="col" id="colHeaderStyle" style="width: 14%;">URL style</th>
-              <th scope="col" id="colHeaderUrl" style="width: 32%;">Destination link</th>
-              <th scope="col" id="colHeaderDate" style="width: 13%;">Deployed</th>
-              <th scope="col" style="width: 15%; text-align: right;">Actions</th>
+              <!-- 10. DEPLOYMENTS TABLE: First column is Project name; Active sort header gets 3px orange underline -->
+              <th scope="col" id="colHeaderProject" style="width: 17%;">Project name</th>
+              <th scope="col" id="colHeaderName" class="sort-active" style="width: 20%;">Site name</th>
+              <th scope="col" id="colHeaderStyle" style="width: 11%;">URL style</th>
+              <th scope="col" id="colHeaderUrl" style="width: 24%;">Destination link</th>
+              <th scope="col" id="colHeaderDate" style="width: 10%;">Deployed</th>
+              <th scope="col" style="width: 18%; text-align: right;">Actions</th>
             </tr>
           </thead>
           <tbody id="linksTableBody">
             <tr>
-              <td colspan="5" class="table-empty-row">
+              <td colspan="6" class="table-empty-row">
                 No deployments yet. Drop a folder to create one.
               </td>
             </tr>
@@ -501,7 +548,10 @@
       <div class="modal-body">
         <div class="field-group">
           <label class="field-label">Device identifier</label>
-          <div class="device-id-box" id="settingsDeviceId">DEV-LOCAL</div>
+          <div class="device-id-row" style="display: flex; gap: 8px; align-items: center;">
+            <div class="device-id-box" id="settingsDeviceId" style="flex: 1;">DEV-LOCAL</div>
+            <button type="button" class="btn-raw btn-sm" id="resetDeviceIdBtn" title="Reset credentials and switch to a new Device ID">Reset Device ID</button>
+          </div>
           <p class="field-helper-text">Credentials are saved locally in your browser storage and isolated to this device.</p>
         </div>
 
@@ -519,9 +569,9 @@
           </div>
 
           <div class="field-group">
-            <label for="settingsProjectName" class="field-label">Pages Project Name</label>
-            <input type="text" id="settingsProjectName" class="raw-input" placeholder="random-pages-vault" aria-describedby="projHelp">
-            <p class="field-helper-text" id="projHelp">Auto-created on your Cloudflare account upon your first deployment.</p>
+            <label for="settingsProjectName" class="field-label">Pages Project Name <span class="required-mark" aria-hidden="true">*</span> <span style="font-size: 11px; color: var(--color-orange); font-weight: 700;">[MANDATORY]</span></label>
+            <input type="text" id="settingsProjectName" class="raw-input" placeholder="e.g. my-pages-project" required aria-describedby="projHelp">
+            <p class="field-helper-text" id="projHelp">Mandatory. Must be configured before deploying. Lowercase letters, numbers, and hyphens only.</p>
           </div>
 
           <div class="field-group">
@@ -539,6 +589,223 @@
       <div class="modal-footer">
         <button type="button" class="btn-raw" id="cancelSettingsBtn">Cancel</button>
         <button type="button" class="btn-raw" id="saveSettingsBtn">Save to device storage</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CLOUDFLARE CONNECT WIZARD (3-STEP ONBOARDING) -->
+  <div class="modal-backdrop" id="cloudflareConnectWizardModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="wizardModalTitle">
+    <div class="modal-dialog wizard-dialog">
+      <!-- Wizard Top Header -->
+      <div class="modal-header wizard-header">
+        <div class="wizard-title-group">
+          <h3 class="modal-title" id="wizardModalTitle">Cloudflare Connect Wizard</h3>
+          <span class="wizard-step-tag" id="wizardStepTag">Step 1 of 3</span>
+        </div>
+        <div class="wizard-top-actions">
+          <button type="button" class="wizard-demo-link" id="wizardDemoModeBtn" title="Explore the dashboard with simulated data without connecting">Try Demo Mode</button>
+          <button type="button" class="modal-close-btn" id="closeWizardModalBtn" aria-label="Close wizard">[Close]</button>
+        </div>
+      </div>
+
+      <!-- Segmented Progress Bar -->
+      <div class="wizard-progress-bar" aria-label="Setup progress">
+        <div class="wizard-progress-segment active" id="progSeg1"><span>1. Account</span></div>
+        <div class="wizard-progress-segment" id="progSeg2"><span>2. Token</span></div>
+        <div class="wizard-progress-segment" id="progSeg3"><span>3. Connect</span></div>
+      </div>
+
+      <div class="modal-body wizard-body">
+        <!-- STEP 1: CREATE A FREE ACCOUNT -->
+        <div class="wizard-step-panel" id="wizardStep1" style="display: block;">
+          <h4 class="wizard-headline">Connect Cloudflare to deploy free</h4>
+          <p class="wizard-subtext">Cloudflare Pages hosts your frontend for free. You just need to connect it once.</p>
+
+          <div class="wizard-card-primary">
+            <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer" class="btn-raw btn-wizard-action" id="wizardSignUpBtn">
+              Create free Cloudflare account ↗
+            </a>
+            <p class="wizard-note">No credit card needed for free Pages hosting.</p>
+          </div>
+
+          <div class="wizard-separator">
+            <span>ALREADY HAVE AN ACCOUNT?</span>
+          </div>
+
+          <button type="button" class="btn-raw btn-wizard-secondary" id="wizardNextToStep2Btn">
+            I already have an account, Next →
+          </button>
+
+          <!-- Where do I find this tooltip / guide -->
+          <div class="wizard-help-toggle" id="step1HelpToggle">
+            <button type="button" class="btn-help-toggle" id="step1HelpBtn">
+              ❓ Where do I find this?
+            </button>
+            <div class="wizard-help-drawer" id="step1HelpDrawer" style="display: none;">
+              <p>Signing up takes 30 seconds at <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer" class="wizard-link">dash.cloudflare.com/sign-up</a>. The Free tier includes 100 direct uploads per day with unlimited bandwidth.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: CREATE YOUR TOKEN -->
+        <div class="wizard-step-panel" id="wizardStep2" style="display: none;">
+          <h4 class="wizard-headline">Create your connection token</h4>
+          <p class="wizard-subtext">A secure token lets this dashboard upload your static files to Cloudflare Pages.</p>
+
+          <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" class="btn-raw btn-wizard-action" id="wizardOpenTokensBtn">
+            Open Cloudflare to create token ↗
+          </a>
+
+          <div class="wizard-checklist">
+            <div class="wizard-checklist-title">Exact steps to follow:</div>
+            <ol class="wizard-steps-list">
+              <li>Click <strong>Create Token</strong></li>
+              <li>Click <strong>Get started</strong> next to <strong>Custom Token</strong></li>
+              <li>Name it: <code class="code-badge">Pages Dashboard</code></li>
+              <li>Permissions: <code class="code-badge">Account &gt; Cloudflare Pages &gt; Edit</code>, <code class="code-badge">Account &gt; Account Settings &gt; Read</code></li>
+              <li>Account Resources: <code class="code-badge">Include &gt; All accounts</code></li>
+              <li>Click <strong>Continue to summary</strong> &gt; <strong>Create Token</strong> &gt; <strong>Copy</strong></li>
+            </ol>
+          </div>
+
+          <!-- Warnings -->
+          <div class="wizard-alert-box alert-warn">
+            <strong>⚠️ Copy it now:</strong> Cloudflare only shows it once. If you lose it, create a new one.
+          </div>
+          <div class="wizard-alert-box alert-danger">
+            <strong>⛔ Safety warning:</strong> Do NOT use Global API Key. It is unsafe. Use API Token only.
+          </div>
+
+          <!-- Visual Placeholder Mockups -->
+          <div class="wizard-diagram-grid">
+            <div class="wizard-diagram-card">
+              <div class="wizard-diagram-label">[Cloudflare API Tokens Screen]</div>
+              <div class="ascii-mockup-frame">
+                <div class="mockup-row">API Tokens &gt; User API Tokens</div>
+                <div class="mockup-box-highlight">[ Create Token ] &lt;-- Click here</div>
+              </div>
+            </div>
+            <div class="wizard-diagram-card">
+              <div class="wizard-diagram-label">[Custom Token Permissions]</div>
+              <div class="ascii-mockup-frame">
+                <div class="mockup-row">Permissions: Account | Cloudflare Pages | Edit</div>
+                <div class="mockup-row">Permissions: Account | Account Settings | Read</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Where do I find this tooltip / guide -->
+          <div class="wizard-help-toggle" id="step2HelpToggle">
+            <button type="button" class="btn-help-toggle" id="step2HelpBtn">
+              ❓ Where do I find this?
+            </button>
+            <div class="wizard-help-drawer" id="step2HelpDrawer" style="display: none;">
+              <p>In your Cloudflare dashboard, click your profile icon in the top right corner &gt; <strong>My Profile</strong> &gt; <strong>API Tokens</strong> on the left sidebar, or click the direct button above.</p>
+            </div>
+          </div>
+
+          <div class="wizard-nav-row">
+            <button type="button" class="btn-raw btn-wizard-back" id="wizardBackToStep1Btn">← Back</button>
+            <button type="button" class="btn-raw btn-wizard-secondary" id="wizardNextToStep3Btn">Next: Paste Token →</button>
+          </div>
+        </div>
+
+        <!-- STEP 3: PASTE AND CONNECT -->
+        <div class="wizard-step-panel" id="wizardStep3" style="display: none;">
+          <h4 class="wizard-headline">Paste your token to connect</h4>
+          <p class="wizard-subtext">Paste the token you copied from Cloudflare. We will auto-detect your Account ID.</p>
+
+          <div class="wizard-token-input-group">
+            <label for="wizardApiTokenInput" class="field-label">Cloudflare API Token</label>
+            <div class="token-input-wrapper">
+              <input type="password" id="wizardApiTokenInput" class="raw-input token-input" placeholder="Paste your API Token here (e.g. cfat_...)" autocomplete="off">
+              <button type="button" class="btn-raw btn-paste-token" id="wizardPasteBtn" title="Paste from clipboard">📋 Paste</button>
+            </div>
+          </div>
+
+          <!-- Multi-account selection (hidden unless multiple accounts detected) -->
+          <div class="wizard-account-select-group" id="wizardAccountSelectGroup" style="display: none;">
+            <label for="wizardAccountSelect" class="field-label">Which account to use?</label>
+            <select id="wizardAccountSelect" class="raw-select"></select>
+            <p class="field-helper-text">Multiple accounts found for this token. Select which account to connect.</p>
+          </div>
+
+          <!-- Optional Project Name for beginner convenience -->
+          <div class="wizard-project-input-group">
+            <label for="wizardProjectNameInput" class="field-label">Pages Project Name</label>
+            <input type="text" id="wizardProjectNameInput" class="raw-input" value="random-pages-vault" placeholder="e.g. my-pages-project">
+            <p class="field-helper-text">Default project used for deployments. Lowercase letters, numbers, and hyphens only.</p>
+          </div>
+
+          <!-- Error Alert Banner -->
+          <div class="wizard-error-banner" id="wizardErrorBanner" style="display: none;" role="alert">
+            <span id="wizardErrorText"></span>
+          </div>
+
+          <!-- Action Button -->
+          <div class="wizard-submit-wrap">
+            <button type="button" class="btn-raw btn-wizard-primary btn-submit-connect" id="wizardSubmitBtn">
+              Test and Connect ⚡
+            </button>
+          </div>
+
+          <!-- Where do I find this tooltip / guide -->
+          <div class="wizard-help-toggle" id="step3HelpToggle">
+            <button type="button" class="btn-help-toggle" id="step3HelpBtn">
+              ❓ Where do I find this?
+            </button>
+            <div class="wizard-help-drawer" id="step3HelpDrawer" style="display: none;">
+              <p>Your token was displayed right after clicking "Create Token" on Cloudflare. If you missed it, go back to Step 2 and generate a new one. It usually starts with <code>cfat_</code> or has 40 characters.</p>
+            </div>
+          </div>
+
+          <div class="wizard-nav-row">
+            <button type="button" class="btn-raw btn-wizard-back" id="wizardBackToStep2Btn">← Back</button>
+          </div>
+        </div>
+
+        <!-- SUCCESS & FIRST SITE SCREEN -->
+        <div class="wizard-step-panel" id="wizardSuccessStep" style="display: none;">
+          <div class="wizard-success-card">
+            <div class="success-icon">✔</div>
+            <h4 class="wizard-headline" id="wizardSuccessHeadline">Connected successfully!</h4>
+            <div class="wizard-account-meta" id="wizardAccountMeta">
+              Connected as <strong id="wizardSuccessEmail">user@example.com</strong> · Account: <strong id="wizardSuccessAccount">My Account</strong>
+            </div>
+          </div>
+
+          <h5 class="first-deploy-title">Deploy your first site</h5>
+          <p class="first-deploy-subtext">Choose how you want to deploy right now:</p>
+
+          <div class="first-deploy-grid">
+            <div class="first-deploy-card" id="cardDeployUpload" role="button" tabindex="0">
+              <div class="deploy-card-icon">📂</div>
+              <div class="deploy-card-title">Upload dist folder</div>
+              <div class="deploy-card-desc">Drag and drop your built HTML/CSS/JS files directly into the dashboard.</div>
+              <button type="button" class="btn-raw btn-card-action">Upload files →</button>
+            </div>
+
+            <div class="first-deploy-card" id="cardDeployTemplate" role="button" tabindex="0">
+              <div class="deploy-card-icon">⚡</div>
+              <div class="deploy-card-title">Use a template</div>
+              <div class="deploy-card-desc">Deploy a ready-to-use template: Vite + React, Astro, or HTML landing page.</div>
+              <button type="button" class="btn-raw btn-card-action">Pick template →</button>
+            </div>
+
+            <div class="first-deploy-card" id="cardDeployGithub" role="button" tabindex="0">
+              <div class="deploy-card-icon">🐙</div>
+              <div class="deploy-card-title">Connect GitHub</div>
+              <div class="deploy-card-desc">Push to Git and let Cloudflare build and deploy automatically on push.</div>
+              <button type="button" class="btn-raw btn-card-action">View guide ↗</button>
+            </div>
+          </div>
+
+          <div class="wizard-footer-meta">
+            <button type="button" class="btn-raw" id="wizardFinishBtn">Go to Dashboard</button>
+            <button type="button" class="btn-link text-danger" id="wizardDisconnectBtn">Disconnect account</button>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

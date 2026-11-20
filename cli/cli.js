@@ -73,6 +73,7 @@ function parseArgs() {
     content: '',
     slug: '',
     prefix: '',
+    projectName: '',
     mode: 'branch',
     status: false,
     dryRun: false,
@@ -91,6 +92,7 @@ function parseArgs() {
     else if (arg === '--content' && args[i + 1]) options.content = args[++i];
     else if (arg === '--slug' && args[i + 1]) options.slug = args[++i];
     else if (arg === '--prefix' && args[i + 1]) options.prefix = args[++i];
+    else if ((arg === '--project-name' || arg === '--project') && args[i + 1]) options.projectName = args[++i];
     else if (arg === '--mode' && args[i + 1]) options.mode = args[++i];
   }
 
@@ -146,6 +148,14 @@ async function run() {
   }
 
   printBanner();
+
+  // 0. Project name is mandatory
+  const cfg = getConfig();
+  const effectiveProject = options.projectName || cfg.projectName;
+  if (!effectiveProject || !effectiveProject.trim()) {
+    console.error(`\n${colors.red}${colors.bright}❌ ERROR: Project name is mandatory.${colors.reset} Please configure a project name via .env or pass --project-name <name>.`);
+    process.exit(1);
+  }
 
   // 1. Check Daily Free Limit before executing
   const quota = await getQuotaStatus(false);

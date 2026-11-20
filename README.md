@@ -1,173 +1,181 @@
-# Cloudflare Pages Direct Deployment Tool
+# Cloudflare Pages Deployment Dashboard
 
-Deploy static folders and HTML files directly to the Cloudflare Pages edge network from a local web dashboard or terminal CLI, keeping Cloudflare credentials on the server.
+A local web dashboard and command-line tool. You can deploy and manage static websites on Cloudflare Pages without exposing your secret credentials.
 
-## What it does not do
+## Features
 
-- Does not compile or bundle frontend source files (TypeScript, JSX, SCSS, or framework projects must be built to static HTML, CSS, and JS before deploying).
-- Does not manage Cloudflare Workers, Functions, KV, D1, or R2 bindings.
-- Does not provide user authentication or multi-tenant access control.
-- Does not manage custom domains or DNS records.
+- **Direct Edge Deployment**: Deploy static folders or single HTML files directly to Cloudflare Pages through Wrangler.
+- **Project Organization**: Group your deployments under dedicated Cloudflare Pages project names.
+- **Two Routing Options**: Choose between subdomain branches (`https://<slug>.<project>.pages.dev`) and unified path routing (`https://<project>.pages.dev/r/<slug>`).
+- **Deployment Lifecycle**: Pause live sites with a maintenance placeholder, resume original files, or redeploy with URL renaming and automatic redirects.
+- **Shared History**: View deployments from both the web dashboard and terminal commands in one list.
+- **QR Code Sharing**: Create scannable QR codes for your published website addresses.
+- **Quota Tracking**: Monitor daily upload limits and monthly deployment counters with live countdown timers.
+
+## Scope & Non-Goals
+
+- **No Asset Compilation**: Build your frontend projects into static files before you upload them. The server does not compile TypeScript or framework source files.
+- **No Backend Cloudflare Bindings**: The tool does not manage Cloudflare Workers, Functions, KV storage, or database bindings.
+- **Single-Tenant Operation**: The system does not support multiple user accounts or role permissions. It protects local connections through browser device pairing.
+- **No Custom DNS Management**: The tool does not configure custom domain names or DNS records.
 
 ## Requirements
 
-- Node.js 18.0.0 or higher (tested on Node.js v24.18.0, npm 11.16.0).
-- Cloudflare account (Free or paid).
-- Cloudflare Account ID (32 hexadecimal characters).
-- Cloudflare API Token with `Account` -> `Cloudflare Pages` -> `Edit` permissions.
+- Node.js 18.0.0 or higher.
+- Dependencies defined in `package.json` and `requirements.txt` (the startup script installs missing packages automatically).
+- A Cloudflare account with an API token that has these permissions:
+  - `Account > Cloudflare Pages > Edit`
+  - `Account > Account Settings > Read`
+  - Refer to the [Cloudflare API Tokens documentation](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) for token creation steps.
 
-## Setup
+## Quickstart
 
-1. Clone or download the repository, then navigate to the project root:
+1. Download the project and open the folder:
 ```bash
-cd c:/QR/Gigs
+git clone <repository-url>
+cd cloudflare-pages-dashboard
 ```
 
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Create your local environment file:
-```bash
-cp .env.example .env
-```
-
-4. Open `.env` and fill in your Cloudflare credentials:
-```env
-CLOUDFLARE_ACCOUNT_ID=your_account_id
-CLOUDFLARE_API_TOKEN=your_api_token
-CLOUDFLARE_PROJECT_NAME=random-pages-vault
-```
-
-5. Start the server:
+2. Start the application:
 ```bash
 npm start
 ```
+The startup script verifies your dependencies and launches the local server.
 
-Expected output:
-```
-⚡ Cloudflare Pages Workflow & Auto-Updating Quota Dashboard running on:
-   👉 http://localhost:3000
+3. Open your browser:
+```text
+http://localhost:3000
 ```
 
-Open `http://localhost:3000` in your browser.
+4. Connect your Cloudflare account:
+   - **Through the Web Dashboard (Recommended)**: Open the Connect Wizard in the dashboard. Paste your Cloudflare API token. The server verifies your token, finds your Account ID automatically, and saves your credentials in an encrypted local vault.
+   - **Through the Environment File (Headless or CLI)**: Copy `.env.example` to `.env`. Add your `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
 
 ## Configuration
 
-All configuration is loaded from `.env` via `lib/config.js`.
+You can update settings in the dashboard Settings dialog or write them into `.env`.
 
-| Name | Required | Where used | What it does |
+| Name | Required | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `CLOUDFLARE_ACCOUNT_ID` | Yes (for live deploys) | Server only | 32-character hexadecimal string identifying your Cloudflare account. |
-| `CLOUDFLARE_API_TOKEN` | Yes (for live deploys) | Server only | Cloudflare API token (~40-50 characters) with Pages Edit scope. |
-| `CLOUDFLARE_PROJECT_NAME` | No (default: `random-pages-vault`) | Server and client | The target Cloudflare Pages project name. Auto-created on first deploy if missing. |
-| `DAILY_FREE_LIMIT` | No (default: `100`) | Server and client | Max direct uploads allowed per UTC day before the server rejects new requests. |
-| `MONTHLY_BUILD_LIMIT` | No (default: `500`) | Server and client | Monthly build cap threshold displayed on the dashboard monitor. |
-| `DEFAULT_DEPLOY_MODE` | No (default: `branch`) | Server only | Default URL style: `branch` (subdomain) or `path` (subdirectory). |
-| `PORT` | No (default: `3000`) | Server only | Port number for the local Express HTTP server. |
+| `CLOUDFLARE_ACCOUNT_ID` | Optional for browser, required for CLI | None | Your 32-character Cloudflare account identifier. The web wizard detects this automatically. |
+| `CLOUDFLARE_API_TOKEN` | Optional for browser, required for CLI | None | Your Cloudflare API token with Pages Edit and Account Settings Read permissions. |
+| `CLOUDFLARE_PROJECT_NAME` | No | `random-pages-vault` | Target Cloudflare Pages project name. The server converts names to lowercase letters and hyphens. |
+| `DAILY_FREE_LIMIT` | No | `100` | Maximum uploads allowed per day before the server pauses new uploads until midnight UTC. |
+| `MONTHLY_BUILD_LIMIT` | No | `500` | Monthly build limit displayed on the quota monitor. |
+| `DEFAULT_DEPLOY_MODE` | No | `branch` | Default routing mode (`branch` for subdomains, `path` for subdirectories). |
+| `PORT` | No | `3000` | Local network port for the server. |
 
 ## Usage
 
-### Web dashboard
+### Web Dashboard
 
-1. Open `http://localhost:3000`.
-2. Drop a static folder into the dropzone, or click "Select files" / "Select folder".
-3. Check the site name (slug). Click "New random name" or type a custom slug.
-4. Select the URL style:
-   - **Subdomain (`branch`)**: live at `https://<slug>.<projectName>.pages.dev` (e.g., `https://landing-demo.random-pages-vault.pages.dev`).
-   - **Path directory (`path`)**: live at `https://<projectName>.pages.dev/r/<slug>` (e.g., `https://random-pages-vault.pages.dev/r/landing-demo`).
-5. Click **Deploy**.
-6. The terminal stream outputs Wrangler logs. Once finished, copy the URL or download the QR code.
+- **Upload and Deploy**: Drop a folder or static files into the drop zone. Type a project name and slug. Select your routing mode and click deploy.
+- **Manage Deployments**: Open published links, copy URLs, show QR codes, pause or resume live sites, redeploy updated assets, or delete records.
 
-### Command-line interface
+### Command-Line Interface (CLI)
 
-Check current quota status and countdown:
+Check quota and reset countdown:
 ```bash
 npm run status
 ```
 
-Stage and run a dry-run preview:
+Preview files locally without uploading:
 ```bash
 npm run deploy:preview
 ```
 
-Deploy a randomly generated page directly to Cloudflare Pages:
+Deploy a generated test page:
 ```bash
 npm run deploy:random
 ```
 
-Deploy a specific built-in template with custom text:
+Deploy a specific template with custom text:
 ```bash
-node cli/cli.js --deploy --template secret --title "Confidential Doc" --content "Access code: 9481"
+node cli/cli.js --deploy --project-name "marketing" --template landing --title "Launch Page"
 ```
 
-## How it works
-
-The browser frontend reads dropped files and sends their contents via `POST /api/deployments/generate`. The Express server receives the payload, writes the staged directory structure under `dist/builds/<slug>`, and spawns `npx wrangler pages deploy <deployDir>`. Wrangler uploads the files directly to Cloudflare Pages. Once Wrangler returns an exit code of 0, the server appends the deployment record to `data/deployments.json` and returns the live URL to the client.
-
-```
-Browser Dropzone ──> Express Server (/api/deployments/generate)
-                           │
-                           ├──> Stages files to dist/builds/<slug>
-                           ├──> Spawns: npx wrangler pages deploy
-                           │         │
-                           │         └──> Cloudflare Pages Edge CDN
-                           │
-                           └──> Appends record to data/deployments.json
+Clear saved device pairing credentials:
+```bash
+npm run reset:device
 ```
 
-- **Deployment records**: Stored in `data/deployments.json` on the server filesystem.
-- **Device configuration**: Stored in `data/devices.json` on the server and `localStorage` on the client.
-- **Quota counters**: Computed dynamically on each request by comparing timestamps in `data/deployments.json` against `00:00:00 UTC` and the 1st of the current month.
-- **UI settings**: URL style selection and auto-rename toggle reside in client memory only and reset on reload.
-- **Persistence**: All files inside `data/` and `.env` survive server restarts, provided the host filesystem is non-ephemeral.
+## Security Layer
 
-## Quotas and limits
+This project runs on your local machine and protects your Cloudflare credentials at every step. It keeps your Cloudflare API token safe from browser scripts, system process lists, and public deployments.
 
-Limits checked against official [Cloudflare Pages platform limits documentation](https://developers.cloudflare.com/pages/platform/limits/) on October 29, 2026.
+### Browser Device Pairing
+
+When you open the dashboard, the server pairs with your browser session.
+
+- The server generates a unique device identifier and a random secret key.
+- The server stores the secret key inside an HTTP-only browser cookie (`HttpOnly`, `SameSite=Strict`). Client-side JavaScript cannot read or copy this cookie.
+- Every API request sends the device identifier in an `X-Device-Id` request header and the secret key in the cookie.
+- The server compares secret hashes in constant time (`crypto.timingSafeEqual`) before it accepts any request.
+
+### Credential Vaults on Disk
+
+When you connect Cloudflare through the wizard, the server locks your credentials into a private vault file.
+
+- The server encrypts your Cloudflare API token before it writes anything to disk (`AES-256-GCM`).
+- The server never stores the raw encryption key on disk. It derives the key in memory via HKDF (`RFC 5869`) only when your paired browser makes an authenticated request.
+- The encrypted vault uses tamper-detection tags (16-byte GCM authentication tag). If anyone alters the vault file on disk, decryption fails immediately and the server refuses access.
+- If you use the command line instead of the browser, the server reads fallback credentials from your local environment file (`.env`).
+
+### Secret Redaction and API Protection
+
+Your Cloudflare API token never leaves the server.
+
+- The server never includes your Cloudflare API token in API responses or web pages.
+- The dashboard interface always masks your Cloudflare Account ID so observers cannot read it.
+- The server scrubs your Cloudflare API token from terminal logs and error output before displaying them.
+- If an unknown visitor attempts repeated failed pairing or authentication attempts, the server locks out that client address.
+
+### Safe Deployments and File Filtering
+
+When you drop a folder to deploy, the server scans all files before uploading them to Cloudflare Pages.
+
+- The scanner blocks sensitive files at every directory depth.
+- It automatically drops environment files (`.env`), Git metadata directories (`.git`), cloud provider keys (`.aws`), and private SSH keys.
+- You cannot accidentally publish secret keys or repository history to the public internet.
+
+### Environment-Based Token Passing
+
+When the server uploads your website to Cloudflare Pages:
+
+- It runs the deployment tool in a separate child process.
+- It passes your Cloudflare API token through process environment variables.
+- The token never appears in command-line arguments. Other users on your computer cannot see your token by viewing system process listings.
+
+For sequence diagrams and protocol specifications, see [docs/architecture.md](docs/architecture.md).
+
+## Quotas and Limits
+
+Limits align with official [Cloudflare Pages platform limits](https://developers.cloudflare.com/pages/platform/limits/):
 
 | Metric | Limit | Enforced by |
 | :--- | :--- | :--- |
-| **Max file size** | 25 MiB per individual asset | Cloudflare Pages and dashboard client validator (`public/js/dashboard.js`) |
-| **Max file count** | 20,000 files per deployment (Free plan) | Cloudflare Pages and dashboard client validator (`public/js/dashboard.js`) |
-| **Daily uploads** | 100 uploads per day (default configurable) | Application server (`server/server.js`) |
-| **Monthly builds** | 500 builds per month (Free plan) | Cloudflare Pages platform |
-| **Projects** | 100 projects per account | Cloudflare Pages platform |
-| **Active preview deployments** | Unlimited | Cloudflare Pages platform |
+| **Max file size** | 25 MiB per individual asset | Cloudflare Pages and browser validator |
+| **Max file count** | 20,000 files per deployment | Cloudflare Pages and browser validator |
+| **Daily uploads** | 100 uploads per day | Cloudflare Pages platform and server quota counter |
+| **Monthly builds** | 500 builds per month (Free tier) | Cloudflare Pages platform |
 
-- **Daily quota counter resets at**: `00:00:00 UTC` every night.
-- **Monthly build counter resets at**: `00:00:00 UTC` on the 1st of every calendar month.
+- Daily quota counters reset at `00:00:00 UTC` daily.
+- Monthly counters reset at `00:00:00 UTC` on the first day of each calendar month.
 
-## Security notes
+## Verification & Testing
 
-- **Secret storage**: Cloudflare API tokens and Account IDs live in `.env` and `data/devices.json` on the server. If configured via the web UI Settings modal, credentials are also stored in the browser's `localStorage` under `cf_device_vault_<deviceId>`.
-- **Frontend visibility**: The dashboard queries `/api/status`, which provides a masked Account ID (e.g. `5594b4...`). However, the `/api/config` endpoint returns the stored credentials in its JSON response body upon save.
-- **Device ID**: The device ID (`DEV-...`) generated by the client is a random identifier stored in `localStorage`, not a secret or authentication token.
-- **Uploaded folder contents**: The staging pipeline in `lib/page-generator.js` copies all uploaded files into the deployment folder without filtering hidden files or dotfiles. **Do not upload folders containing `.env` files, `.git` directories, or private keys**, as they will be published directly to the public Cloudflare Pages URL.
+Run the test suite:
 
-## Troubleshooting
+```bash
+npm test
+```
 
-### `Cloudflare deployment failed (code 1)`
-- **Cause**: Wrangler failed during deployment. Common causes include invalid API token, missing Account ID, or expired credentials.
-- **Fix**: Verify your token permissions (`Account.Cloudflare Pages: Edit`) and ensure `CLOUDFLARE_ACCOUNT_ID` matches your Cloudflare account. Run `npm run cf:whoami` to test.
+Test coverage includes:
 
-### `Daily free tier deployment limit reached (100/100)`
-- **Cause**: The number of deployments created today has reached `DAILY_FREE_LIMIT`.
-- **Fix**: Wait until `00:00 UTC` for the automated quota reset, or increase `DAILY_FREE_LIMIT` in `.env` and restart the server.
-
-### `Project '<name>' does not exist yet`
-- **Cause**: The Pages project has not been provisioned on Cloudflare, and the API token lacks permission to auto-create projects.
-- **Fix**: Run `npx wrangler pages project create <name> --production-branch main` in your terminal to create the project manually.
-
-### `SyntaxError: Unexpected token in JSON`
-- **Cause**: Corrupted or truncated JSON syntax in `data/deployments.json` or `data/devices.json`.
-- **Fix**: Open `data/deployments.json` and restore valid JSON array syntax (`[]`), or delete the file (the server will re-create an empty array).
-
-## Known limitations
-
-- **Shared ledger**: Deployments in `data/deployments.json` are stored in a single flat array on the server and are not segregated per device ID. All clients connected to the same server instance see all deployment records.
-- **Device ID persistence**: The device ID lives in browser `localStorage`. Clearing site data generates a new ID and orphans any credentials stored in that browser's client vault.
-- **Concurrent deployment race conditions**: `data/deployments.json` is updated via non-atomic read-modify-write operations without file locking. Simultaneous deployments from multiple tabs can overwrite each other.
-- **Unpersisted preferences**: URL style selection and auto-rename settings reset to defaults when the page is reloaded.
-- **Ephemeral hosting**: When hosted on platforms without persistent storage (e.g., stateless Docker containers or serverless runtimes), files in `data/` and `dist/` will be wiped on restart.
+- Path traversal blocking and file upload sanitization
+- Sensitive file and directory exclusion across all folders
+- Device pairing verification and authentication boundaries
+- Safe storage writes and automatic file corruption recovery
+- Deployment lifecycle actions (pause, resume, redeploy, URL renaming)
+- Authenticated vault encryption, key derivation, and rate limiting
+- End-to-end browser workflows and telemetry verification (Playwright)

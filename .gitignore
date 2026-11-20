@@ -1,11 +1,46 @@
+# Dependencies
 node_modules/
-dist/
 bun.lock
+
+# Environment & Secret Credentials
 .env
 .env.*
+.env.local
+.env.*.local
 !.env.example
+*.pem
+*.key
+*.cert
+
+# Test Coverage & Runtime Artifacts
+coverage/
+.nyc_output/
+test-results/
+
+# Runtime Data, Vaults & Test State
 data/
-*.tmp
+data/*
 *.corrupt.bak
+*.corrupt.*.bak
+*.tmp
+*.temp
+
+# Build Outputs & Cloudflare / Wrangler Staging
+dist/
+build/
+.wrangler/
+scratch/
+
+# Agent Workspaces & Logs
+.agents/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating System Files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+

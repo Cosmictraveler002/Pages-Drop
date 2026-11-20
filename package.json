@@ -6,14 +6,24 @@
   "bin": {
     "cf-random-pages": "./cli/cli.js"
   },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
-    "start": "node server/server.js",
+    "start": "node scripts/start-runner.js",
     "dev": "node --watch server/server.js",
+    "lint": "node scripts/lint.js",
+    "typecheck": "node scripts/lint.js",
     "deploy:random": "node cli/cli.js --deploy",
     "deploy:preview": "node cli/cli.js --dry-run",
     "status": "node cli/cli.js --status",
-    "test": "node tests/security_regression.test.js",
+    "reset:device": "node scripts/reset-device.js",
+    "test": "node tests/security_regression.test.js && node tests/new_features.test.js && node tests/cloudflare_wizard.test.js && node tests/e2e.test.js",
     "test:security": "node tests/security_regression.test.js",
+    "test:features": "node tests/new_features.test.js",
+    "test:wizard": "node tests/cloudflare_wizard.test.js",
+    "test:e2e": "node tests/e2e.test.js",
     "cf:login": "npx wrangler login",
     "cf:whoami": "npx wrangler whoami",
     "cf:projects": "npx wrangler pages project list"
