@@ -501,7 +501,7 @@ function computeLiveUrl(slug) {
   if (appState.activeMode === 'path') {
     return `https://${proj}.pages.dev/r/${clean}`;
   }
-  return `https://${clean}.pages.dev`;
+  return `https://${clean}.${proj}.pages.dev`;
 }
 
 function updateLiveFinalUrl() {
